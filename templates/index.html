@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIR Studio - RAG Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <i class="fas fa-robot"></i>
+                    <span class="logo-text">AIR</span>
+                    <span class="logo-subtitle">Studio</span>
+                </div>
+                <nav class="nav-breadcrumb">
+                    <span class="nav-item">AIR Studio Chat</span>
+                    <span class="nav-separator">/</span>
+                    <span class="nav-item active">RAG Manager</span>
+                </nav>
+            </div>
+            <div class="header-right">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span>안녕하세요, SK 쩜드스 어드민님</span>
+                </div>
+                <div class="header-icons">
+                    <i class="fas fa-cog"></i>
+                    <i class="fas fa-external-link-alt"></i>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-container">
+            <!-- 사이드바 -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <select class="document-selector">
+                        <option>Document</option>
+                    </select>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="document-list">
+                        <div class="list-header">
+                            <span class="header-no">No</span>
+                            <span class="header-title">저장소명</span>
+                        </div>
+                        <div id="documentList" class="document-items">
+                            <!-- 문서 목록이 여기에 동적으로 추가됩니다 -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Dialogue History</h3>
+                    <div class="search-container">
+                        <input type="text" placeholder="대화내용 입력하세요" class="search-input">
+                        <button class="edit-btn">Edit</button>
+                    </div>
+                    <div class="history-filters">
+                        <button class="filter-btn active">오늘</button>
+                        <button class="filter-btn">지난 대화</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 메인 채팅 영역 -->
+            <main class="chat-area">
+                <div class="chat-welcome">
+                    <h1>Hello! I am your AI assistant</h1>
+                    <div class="welcome-subtitle">
+                        <i class="fas fa-chevron-right"></i>
+                        <span>개인/업무용을 포함한 설정</span>
+                    </div>
+                </div>
+
+                <div id="chatMessages" class="chat-messages">
+                    <!-- 채팅 메시지가 여기에 표시됩니다 -->
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chatInput" placeholder="Ask me anything..." class="chat-input">
+                        <button class="attach-btn">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <button id="sendBtn" class="send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 하단 위젯 -->
+                <div class="bottom-widgets">
+                    <div class="widget weather-widget">
+                        <div class="weather-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <div class="weather-info">
+                            <div class="temperature" id="temperature">3°C</div>
+                            <div class="location" id="location">안양시 동구</div>
+                        </div>
+                        <div class="weather-details">
+                            <div class="condition" id="condition">흐림</div>
+                            <div class="range" id="range">5°C/-1°C</div>
+                        </div>
+                    </div>
+
+                    <div class="widget tarot-widget">
+                        <div class="tarot-icon">
+                            <i class="fas fa-magic"></i>
+                        </div>
+                        <div class="tarot-info">
+                            <div class="tarot-title">Today's Tarot</div>
+                            <div class="tarot-desc">당신의 길을 밝혀 드립...</div>
+                        </div>
+                    </div>
+
+                    <div class="widget issue-widget">
+                        <div class="issue-icon">
+                            <i class="fas fa-newspaper"></i>
+                        </div>
+                        <div class="issue-info">
+                            <div class="issue-title">Today' Issue</div>
+                            <div class="issue-desc">주요 뉴스 요약...</div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
