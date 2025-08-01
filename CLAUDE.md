@@ -44,19 +44,16 @@ BEACON은 Flask 기반의 RAG (Retrieval-Augmented Generation) 채팅 애플리�
 # 1. Ollama 설치 (macOS)
 brew install ollama
 
-# 2. Ollama 시작
-ollama serve
-
-# 3. 한국어 지원 모델 다운로드 (새 터미널에서)
-ollama pull llama3.2:3b
-# 또는 더 큰 모델: ollama pull llama3.2:7b
-
-# 4. Python 의존성 설치
-pip install -r requirements.txt
-
-# 5. 애플리케이션 실행
-python app.py
+# 2. 한 번의 명령으로 모든 것 실행
+./start.sh
 ```
+
+스크립트가 자동으로 수행하는 작업:
+- 가상환경 생성 및 활성화
+- Python 의존성 설치 (변경된 경우에만)
+- Ollama 서비스 시작
+- llama3.2:latest 모델 다운로드 (필요한 경우)
+- Flask 애플리케이션 실행
 
 ### 애플리케이션 실행
 - **개발 서버**: `python app.py`
@@ -72,9 +69,9 @@ python app.py
 
 ### 로컬 AI 설정
 - **Ollama**: 로컬 AI 모델 실행 엔진
-- **기본 모델**: llama3.2:3b (약 2GB)
-- **권장 모델**: llama3.2:7b (더 좋은 성능, 약 4GB)
+- **사용 모델**: llama3.2:latest (약 2GB)
 - **API 엔드포인트**: http://localhost:11434
+- **자동 설치**: start.sh 스크립트에서 자동으로 모델 다운로드
 
 ## 코드 패턴
 
