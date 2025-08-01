@@ -82,10 +82,34 @@
                     <!-- 채팅 메시지가 여기에 표시됩니다 -->
                 </div>
 
+                <!-- PDF 업로드 영역 -->
+                <div class="upload-container" id="uploadContainer" style="display: none;">
+                    <div class="upload-area">
+                        <div class="upload-header">
+                            <h3>PDF 파일 업로드</h3>
+                            <button class="close-upload-btn" id="closeUploadBtn">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="upload-zone" id="uploadZone">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <p>PDF 파일을 드래그하거나 클릭하여 업로드하세요</p>
+                            <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                            <button class="select-file-btn" id="selectFileBtn">파일 선택</button>
+                        </div>
+                        <div class="upload-progress" id="uploadProgress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <p id="progressText">업로드 중...</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="chat-input-container">
                     <div class="chat-input-wrapper">
                         <input type="text" id="chatInput" placeholder="Ask me anything..." class="chat-input">
-                        <button class="attach-btn">
+                        <button class="attach-btn" id="attachBtn">
                             <i class="fas fa-paperclip"></i>
                         </button>
                         <button id="sendBtn" class="send-btn">
@@ -94,42 +118,6 @@
                     </div>
                 </div>
 
-                <!-- 하단 위젯 -->
-                <div class="bottom-widgets">
-                    <div class="widget weather-widget">
-                        <div class="weather-icon">
-                            <i class="fas fa-bolt"></i>
-                        </div>
-                        <div class="weather-info">
-                            <div class="temperature" id="temperature">3°C</div>
-                            <div class="location" id="location">안양시 동구</div>
-                        </div>
-                        <div class="weather-details">
-                            <div class="condition" id="condition">흐림</div>
-                            <div class="range" id="range">5°C/-1°C</div>
-                        </div>
-                    </div>
-
-                    <div class="widget tarot-widget">
-                        <div class="tarot-icon">
-                            <i class="fas fa-magic"></i>
-                        </div>
-                        <div class="tarot-info">
-                            <div class="tarot-title">Today's Tarot</div>
-                            <div class="tarot-desc">당신의 길을 밝혀 드립...</div>
-                        </div>
-                    </div>
-
-                    <div class="widget issue-widget">
-                        <div class="issue-icon">
-                            <i class="fas fa-newspaper"></i>
-                        </div>
-                        <div class="issue-info">
-                            <div class="issue-title">Today' Issue</div>
-                            <div class="issue-desc">주요 뉴스 요약...</div>
-                        </div>
-                    </div>
-                </div>
             </main>
         </div>
     </div>

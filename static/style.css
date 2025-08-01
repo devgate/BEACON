@@ -300,12 +300,44 @@ body {
 }
 
 .message-content {
-    display: inline-block;
+    display: inline-block !important;
     max-width: 70%;
     padding: 12px 16px;
     border-radius: 18px;
     font-size: 14px;
-    line-height: 1.4;
+    line-height: 1.8 !important;
+    white-space: pre-wrap !important;
+    white-space: pre-line !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+}
+
+/* 추가 강제 스타일 */
+.chat-messages .message .message-content {
+    white-space: pre-wrap !important;
+    white-space: pre-line !important;
+}
+
+.message.ai .message-content,
+.message.user .message-content {
+    white-space: pre-wrap !important;
+    white-space: pre-line !important;
+}
+
+.message-content p {
+    margin: 0 0 12px 0;
+    display: block;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content br {
+    display: block;
+    margin: 4px 0;
+    content: "";
 }
 
 .message.user .message-content {
@@ -459,6 +491,250 @@ body {
     background: #2d3748;
 }
 
+/* PDF 업로드 스타일 */
+.upload-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #2d3748;
+    border-radius: 12px;
+    border: 1px solid #4a5568;
+    z-index: 1000;
+    min-width: 400px;
+    max-width: 500px;
+}
+
+.upload-area {
+    padding: 20px;
+}
+
+.upload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #4a5568;
+}
+
+.upload-header h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 18px;
+}
+
+.close-upload-btn {
+    background: transparent;
+    border: none;
+    color: #a0aec0;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.close-upload-btn:hover {
+    color: #ffffff;
+    background: #4a5568;
+}
+
+.upload-zone {
+    border: 2px dashed #4a5568;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.upload-zone:hover {
+    border-color: #00d4ff;
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.upload-zone.dragover {
+    border-color: #00d4ff;
+    background: rgba(0, 212, 255, 0.1);
+}
+
+.upload-icon {
+    font-size: 48px;
+    color: #4a5568;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.upload-zone:hover .upload-icon {
+    color: #00d4ff;
+}
+
+.upload-zone p {
+    color: #a0aec0;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+.select-file-btn {
+    background: #00d4ff;
+    color: #1a202c;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.2s;
+}
+
+.select-file-btn:hover {
+    background: #0099cc;
+}
+
+.upload-progress {
+    margin-top: 20px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: #4a5568;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #00d4ff;
+    transition: width 0.3s;
+    width: 0%;
+}
+
+#progressText {
+    color: #a0aec0;
+    font-size: 14px;
+    text-align: center;
+    margin: 0;
+}
+
+/* 이미지 갤러리 스타일 */
+.image-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 10px 0;
+    max-width: 100%;
+}
+
+.image-container {
+    position: relative;
+    max-width: 150px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+}
+
+.image-container:hover {
+    transform: scale(1.05);
+}
+
+.pdf-image {
+    width: 100%;
+    height: auto;
+    max-height: 120px;
+    object-fit: cover;
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+}
+
+.image-caption {
+    background: rgba(45, 55, 72, 0.9);
+    color: #ffffff;
+    padding: 4px 8px;
+    font-size: 12px;
+    text-align: center;
+    border-radius: 0 0 8px 8px;
+}
+
+/* 이미지 모달 스타일 */
+.image-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2000;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.modal-content {
+    background: #2d3748;
+    border-radius: 12px;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid #4a5568;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 16px;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: #a0aec0;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    font-size: 18px;
+}
+
+.modal-close:hover {
+    color: #ffffff;
+    background: #4a5568;
+}
+
+.modal-body {
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    max-height: calc(90vh - 80px);
+    overflow: auto;
+}
+
+.modal-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
 /* 반응형 */
 @media (max-width: 768px) {
     .sidebar {
@@ -474,12 +750,20 @@ body {
         left: 0;
     }
     
-    .bottom-widgets {
-        flex-direction: column;
-        bottom: 140px;
+    .upload-container {
+        min-width: 90%;
+        max-width: 90%;
     }
     
-    .widget {
-        min-width: auto;
+    .image-gallery {
+        justify-content: center;
+    }
+    
+    .image-container {
+        max-width: 120px;
+    }
+    
+    .pdf-image {
+        max-height: 100px;
     }
 }
