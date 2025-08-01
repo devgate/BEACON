@@ -1,6 +1,10 @@
+/**
+ * BEACON RAG 시스템의 메인 클래스
+ * PDF 문서 업로드, 채팅, 이미지 표시 등의 기능을 관리
+ */
 class RAGManager {
     constructor() {
-        this.isUploading = false; // 업로드 중복 방지 플래그
+        this.isUploading = false; // 파일 업로드 중복 방지 플래그
         this.init();
         this.loadDocuments();
         this.loadWeatherData();
@@ -113,6 +117,15 @@ class RAGManager {
         }
     }
 
+    /**
+     * 채팅 메시지를 화면에 추가하는 함수
+     * @param {string} content - 메시지 내용
+     * @param {string} type - 메시지 타입 ('user' 또는 'ai')
+     * @param {boolean} isLoading - 로딩 상태 표시 여부
+     * @param {Array} images - 표시할 이미지 배열
+     * @param {Array} referencedDocs - 참조된 문서 배열
+     * @returns {HTMLElement} 생성된 메시지 요소
+     */
     addMessage(content, type, isLoading = false, images = [], referencedDocs = []) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
@@ -146,8 +159,8 @@ class RAGManager {
         
         messageDiv.appendChild(contentDiv);
         
-        // 참조된 문서가 있으면 문서 목록 추가
-        if (referencedDocs && referencedDocs.length > 0) {
+        // 참조된 문서가 있고 실제로 데이터가 있으면 문서 목록 추가
+        if (referencedDocs && Array.isArray(referencedDocs) && referencedDocs.length > 0) {
             const referencedDocsDiv = document.createElement('div');
             referencedDocsDiv.className = 'referenced-docs';
             
@@ -311,13 +324,18 @@ class RAGManager {
         });
     }
 
+    /**
+     * PDF 파일 업로드 처리 함수
+     * @param {File} file - 업로드할 PDF 파일
+     */
     async handleFileUpload(file) {
-        // 이미 업로드 중인 경우 중단
+        // 중복 업로드 방지 체크
         if (this.isUploading) {
             console.log('업로드가 이미 진행 중입니다.');
             return;
         }
 
+        // PDF 파일 형식 검증
         if (!file.type.includes('pdf')) {
             alert('PDF 파일만 업로드 가능합니다.');
             return;
@@ -439,11 +457,15 @@ class RAGManager {
         document.body.appendChild(modal);
     }
 
-    // 파일 다운로드
+    /**
+     * 파일 다운로드 함수
+     * @param {number} docId - 문서 ID
+     * @param {string} filename - 파일명
+     */
     downloadFile(docId, filename) {
         const downloadUrl = `/api/download/${docId}`;
         
-        // 새 창에서 다운로드 시작
+        // 임시 다운로드 링크 생성 및 클릭
         const link = document.createElement('a');
         link.href = downloadUrl;
         link.download = filename;
@@ -451,7 +473,7 @@ class RAGManager {
         link.click();
         document.body.removeChild(link);
         
-        // 다운로드 시작 메시지
+        // 사용자에게 다운로드 시작 알림
         this.addSystemMessage(`"${filename}" 파일 다운로드를 시작합니다.`);
     }
 

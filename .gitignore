@@ -174,3 +174,9 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# BEACON 프로젝트 특정 파일들 
+# 업로드된 PDF 파일들 (용량이 크므로 제외)
+uploads/
+# PDF에서 추출된 이미지들 (용량이 크므로 제외)
+static/images/
