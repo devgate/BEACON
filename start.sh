@@ -3,6 +3,20 @@
 # BEACON 앱 자동 시작 스크립트
 echo "🚀 BEACON 앱을 시작합니다..."
 
+# Ollama 설치 확인 및 설치
+if ! command -v ollama &> /dev/null; then
+    echo "📦 Ollama를 설치합니다..."
+    if command -v brew &> /dev/null; then
+        brew install ollama
+    else
+        echo "❌ Homebrew가 설치되지 않았습니다. 먼저 Homebrew를 설치해주세요:"
+        echo "   /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        exit 1
+    fi
+else
+    echo "✅ Ollama가 이미 설치되어 있습니다."
+fi
+
 # 가상환경 디렉토리 설정
 VENV_DIR="venv"
 

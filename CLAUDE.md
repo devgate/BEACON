@@ -41,19 +41,45 @@ BEACON은 Flask 기반의 RAG (Retrieval-Augmented Generation) 채팅 애플리�
 
 ### 설정 및 설치
 ```bash
-# 1. Ollama 설치 (macOS)
-brew install ollama
-
-# 2. 한 번의 명령으로 모든 것 실행
+# 한 번의 명령으로 모든 것 자동 설치 및 실행
 ./start.sh
 ```
 
-스크립트가 자동으로 수행하는 작업:
-- 가상환경 생성 및 활성화
-- Python 의존성 설치 (변경된 경우에만)
-- Ollama 서비스 시작
-- llama3.2:latest 모델 다운로드 (필요한 경우)
-- Flask 애플리케이션 실행
+#### 자동 설치 과정
+`./start.sh` 실행 시 다음 단계가 순차적으로 진행됩니다:
+
+1. **Ollama 설치 확인**
+   - `ollama` 명령어 존재 여부 확인
+   - 없는 경우: `brew install ollama`로 자동 설치
+   - Homebrew가 없으면 설치 안내 후 종료
+
+2. **Python 가상환경 설정**
+   - `venv` 폴더 존재 여부 확인
+   - 없는 경우: `python3 -m venv venv`로 가상환경 생성
+   - 가상환경 활성화: `source venv/bin/activate`
+
+3. **Python 의존성 설치**
+   - `requirements.txt` 변경 여부 확인 (MD5 해시 비교)
+   - 변경된 경우에만: `pip install -r requirements.txt` 실행
+   - 설치된 패키지: Flask, Flask-CORS, requests, python-dotenv, PyPDF2, werkzeug
+
+4. **Ollama 서비스 시작**
+   - Ollama 프로세스 실행 여부 확인
+   - 실행 중이 아닌 경우: `ollama serve` 백그라운드 실행
+
+5. **AI 모델 다운로드**
+   - `llama3.2:latest` 모델 설치 여부 확인
+   - 없는 경우: `ollama pull llama3.2:latest` 실행 (약 2GB 다운로드)
+
+6. **Flask 애플리케이션 실행**
+   - `python app.py`로 개발 서버 시작
+   - http://localhost:5000에서 서비스 제공
+
+**필요한 전제조건**: 
+- macOS 운영체제
+- Homebrew 패키지 매니저
+- Python 3.x 설치
+- 인터넷 연결 (초기 설치 시)
 
 ### 애플리케이션 실행
 - **개발 서버**: `python app.py`
