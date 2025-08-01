@@ -1,5 +1,10 @@
+/**
+ * BEACON RAG 시스템의 메인 클래스
+ * PDF 문서 업로드, 채팅, 이미지 표시 등의 기능을 관리
+ */
 class RAGManager {
     constructor() {
+        this.isUploading = false; // 파일 업로드 중복 방지 플래그
         this.init();
         this.loadDocuments();
         this.loadWeatherData();
@@ -36,6 +41,18 @@ class RAGManager {
 
     renderDocuments(documents) {
         this.documentList.innerHTML = '';
+        
+        if (documents.length === 0) {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'empty-message';
+            emptyMessage.innerHTML = `
+                <i class="fas fa-file-upload"></i>
+                <p>업로드된 문서가 없습니다.</p>
+                <p>PDF 파일을 업로드해주세요.</p>
+            `;
+            this.documentList.appendChild(emptyMessage);
+            return;
+        }
         
         documents.forEach(doc => {
             const docItem = document.createElement('div');
@@ -91,7 +108,7 @@ class RAGManager {
             loadingDiv.remove();
             
             // AI 응답 표시
-            this.addMessage(data.response, 'ai', false, data.images);
+            this.addMessage(data.response, 'ai', false, data.images, data.referenced_docs);
             
         } catch (error) {
             loadingDiv.remove();
@@ -100,7 +117,16 @@ class RAGManager {
         }
     }
 
-    addMessage(content, type, isLoading = false, images = []) {
+    /**
+     * 채팅 메시지를 화면에 추가하는 함수
+     * @param {string} content - 메시지 내용
+     * @param {string} type - 메시지 타입 ('user' 또는 'ai')
+     * @param {boolean} isLoading - 로딩 상태 표시 여부
+     * @param {Array} images - 표시할 이미지 배열
+     * @param {Array} referencedDocs - 참조된 문서 배열
+     * @returns {HTMLElement} 생성된 메시지 요소
+     */
+    addMessage(content, type, isLoading = false, images = [], referencedDocs = []) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         
@@ -132,6 +158,47 @@ class RAGManager {
         timeDiv.textContent = timeString;
         
         messageDiv.appendChild(contentDiv);
+        
+        // 참조된 문서가 있고 실제로 데이터가 있으면 문서 목록 추가
+        if (referencedDocs && Array.isArray(referencedDocs) && referencedDocs.length > 0) {
+            const referencedDocsDiv = document.createElement('div');
+            referencedDocsDiv.className = 'referenced-docs';
+            
+            const docsTitle = document.createElement('div');
+            docsTitle.className = 'referenced-docs-title';
+            docsTitle.innerHTML = '<i class="fas fa-file-alt"></i> 참조된 문서:';
+            referencedDocsDiv.appendChild(docsTitle);
+            
+            referencedDocs.forEach(doc => {
+                const docItem = document.createElement('div');
+                docItem.className = 'referenced-doc-item';
+                
+                const docIcon = document.createElement('i');
+                docIcon.className = 'fas fa-file-pdf';
+                
+                const docTitle = document.createElement('span');
+                docTitle.className = 'doc-title';
+                docTitle.textContent = doc.title;
+                
+                docItem.appendChild(docIcon);
+                docItem.appendChild(docTitle);
+                
+                if (doc.has_file) {
+                    const downloadBtn = document.createElement('button');
+                    downloadBtn.className = 'download-btn';
+                    downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
+                    downloadBtn.title = '파일 다운로드';
+                    downloadBtn.addEventListener('click', () => {
+                        this.downloadFile(doc.id, doc.title);
+                    });
+                    docItem.appendChild(downloadBtn);
+                }
+                
+                referencedDocsDiv.appendChild(docItem);
+            });
+            
+            messageDiv.appendChild(referencedDocsDiv);
+        }
         
         // 이미지가 있으면 이미지 갤러리 추가
         if (images && images.length > 0) {
@@ -214,19 +281,25 @@ class RAGManager {
         });
 
         // 파일 선택 버튼
-        selectFileBtn.addEventListener('click', () => {
+        selectFileBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // 이벤트 버블링 방지
             fileInput.click();
         });
 
-        // 업로드 영역 클릭
-        uploadZone.addEventListener('click', () => {
-            fileInput.click();
+        // 업로드 영역 클릭 (버튼이 아닌 영역만)
+        uploadZone.addEventListener('click', (e) => {
+            // 버튼을 클릭한 경우가 아닐 때만 파일 입력 트리거
+            if (e.target === uploadZone || e.target.classList.contains('upload-icon') || e.target.tagName === 'P') {
+                fileInput.click();
+            }
         });
 
         // 파일 선택 시
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 this.handleFileUpload(e.target.files[0]);
+                // 업로드 후 즉시 파일 입력 초기화하여 같은 파일 재선택 가능하게 함
+                e.target.value = '';
             }
         });
 
@@ -251,12 +324,24 @@ class RAGManager {
         });
     }
 
+    /**
+     * PDF 파일 업로드 처리 함수
+     * @param {File} file - 업로드할 PDF 파일
+     */
     async handleFileUpload(file) {
+        // 중복 업로드 방지 체크
+        if (this.isUploading) {
+            console.log('업로드가 이미 진행 중입니다.');
+            return;
+        }
+
+        // PDF 파일 형식 검증
         if (!file.type.includes('pdf')) {
             alert('PDF 파일만 업로드 가능합니다.');
             return;
         }
 
+        this.isUploading = true; // 업로드 시작 플래그 설정
         const formData = new FormData();
         formData.append('file', file);
 
@@ -299,6 +384,7 @@ class RAGManager {
                 setTimeout(() => {
                     document.getElementById('uploadContainer').style.display = 'none';
                     this.resetUploadForm();
+                    this.isUploading = false; // 업로드 완료 플래그 해제
                 }, 2000);
             } else {
                 throw new Error(result.error);
@@ -312,6 +398,7 @@ class RAGManager {
             
             setTimeout(() => {
                 this.resetUploadForm();
+                this.isUploading = false; // 업로드 실패 플래그 해제
             }, 2000);
         }
     }
@@ -368,6 +455,26 @@ class RAGManager {
         });
         
         document.body.appendChild(modal);
+    }
+
+    /**
+     * 파일 다운로드 함수
+     * @param {number} docId - 문서 ID
+     * @param {string} filename - 파일명
+     */
+    downloadFile(docId, filename) {
+        const downloadUrl = `/api/download/${docId}`;
+        
+        // 임시 다운로드 링크 생성 및 클릭
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 사용자에게 다운로드 시작 알림
+        this.addSystemMessage(`"${filename}" 파일 다운로드를 시작합니다.`);
     }
 
     // 사이드바 토글 (모바일용)

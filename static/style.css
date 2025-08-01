@@ -190,6 +190,30 @@ body {
     color: #ffffff;
 }
 
+.empty-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #a0aec0;
+}
+
+.empty-message i {
+    font-size: 48px;
+    color: #4a5568;
+    margin-bottom: 16px;
+    display: block;
+}
+
+.empty-message p {
+    margin: 8px 0;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.empty-message p:first-of-type {
+    font-weight: bold;
+    color: #ffffff;
+}
+
 .sidebar-section h3 {
     margin-bottom: 15px;
     font-size: 16px;
@@ -584,6 +608,8 @@ body {
     cursor: pointer;
     font-weight: bold;
     transition: background 0.2s;
+    position: relative;
+    z-index: 10; /* 다른 요소들보다 위에 위치 */
 }
 
 .select-file-btn:hover {
@@ -615,6 +641,74 @@ body {
     font-size: 14px;
     text-align: center;
     margin: 0;
+}
+
+/* 참조된 문서 스타일 */
+.referenced-docs {
+    margin: 10px 0;
+    padding: 12px;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+}
+
+.referenced-docs-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+    color: #00d4ff;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.referenced-doc-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(45, 55, 72, 0.5);
+    border-radius: 6px;
+    margin-bottom: 4px;
+    transition: background-color 0.2s;
+}
+
+.referenced-doc-item:hover {
+    background: rgba(45, 55, 72, 0.8);
+}
+
+.referenced-doc-item:last-child {
+    margin-bottom: 0;
+}
+
+.referenced-doc-item i {
+    color: #ff6b6b;
+    font-size: 14px;
+}
+
+.referenced-doc-item .doc-title {
+    flex: 1;
+    font-size: 14px;
+    color: #ffffff;
+}
+
+.download-btn {
+    background: #00d4ff;
+    color: #1a202c;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.2s;
+}
+
+.download-btn:hover {
+    background: #0099cc;
+}
+
+.download-btn i {
+    color: #1a202c !important;
 }
 
 /* 이미지 갤러리 스타일 */
