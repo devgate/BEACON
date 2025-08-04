@@ -90,10 +90,58 @@ documents = []
 # 문서 카테고리 저장소
 # 각 영역별로 문서를 분류하여 관리
 categories = [
-    {"id": 1, "name": "재무", "description": "재무 관련 문서", "icon": "fas fa-calculator", "color": "#10B981"},
-    {"id": 2, "name": "맛집", "description": "맛집 정보 문서", "icon": "fas fa-utensils", "color": "#F59E0B"},
-    {"id": 3, "name": "매뉴얼", "description": "사용 설명서 및 매뉴얼", "icon": "fas fa-book", "color": "#3B82F6"},
-    {"id": 4, "name": "일반", "description": "기타 문서", "icon": "fas fa-file-alt", "color": "#6B7280"}
+    {
+        "id": 1, 
+        "name": "재무", 
+        "description": "재무 관련 문서", 
+        "icon": "fas fa-calculator", 
+        "color": "#10B981",
+        "settings": {
+            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "chunk_size": 512,
+            "chunk_overlap": 50,
+            "chunk_strategy": "sentence"
+        }
+    },
+    {
+        "id": 2, 
+        "name": "맛집", 
+        "description": "맛집 정보 문서", 
+        "icon": "fas fa-utensils", 
+        "color": "#F59E0B",
+        "settings": {
+            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "chunk_size": 256,
+            "chunk_overlap": 30,
+            "chunk_strategy": "paragraph"
+        }
+    },
+    {
+        "id": 3, 
+        "name": "매뉴얼", 
+        "description": "사용 설명서 및 매뉴얼", 
+        "icon": "fas fa-book", 
+        "color": "#3B82F6",
+        "settings": {
+            "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            "chunk_size": 1024,
+            "chunk_overlap": 100,
+            "chunk_strategy": "section"
+        }
+    },
+    {
+        "id": 4, 
+        "name": "일반", 
+        "description": "기타 문서", 
+        "icon": "fas fa-file-alt", 
+        "color": "#6B7280",
+        "settings": {
+            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "chunk_size": 512,
+            "chunk_overlap": 50,
+            "chunk_strategy": "sentence"
+        }
+    }
 ]
 
 # 문서 ID 자동 증가 카운터
@@ -169,6 +217,67 @@ def create_category():
         'category': new_category,
         'message': f'카테고리 "{name}"가 생성되었습니다.'
     })
+
+@app.route('/api/categories/<int:category_id>/settings', methods=['PUT'])
+def update_category_settings(category_id):
+    """카테고리별 RAG 설정 업데이트"""
+    data = request.get_json()
+    
+    # 카테고리 찾기
+    category = next((cat for cat in categories if cat['id'] == category_id), None)
+    if not category:
+        return jsonify({'error': '카테고리를 찾을 수 없습니다.'}), 404
+    
+    # 설정 업데이트
+    if 'embedding_model' in data:
+        category['settings']['embedding_model'] = data['embedding_model']
+    if 'chunk_size' in data:
+        category['settings']['chunk_size'] = int(data['chunk_size'])
+    if 'chunk_overlap' in data:
+        category['settings']['chunk_overlap'] = int(data['chunk_overlap'])
+    if 'chunk_strategy' in data:
+        category['settings']['chunk_strategy'] = data['chunk_strategy']
+    
+    return jsonify({
+        'success': True,
+        'category': category,
+        'message': f'카테고리 "{category["name"]}" 설정이 업데이트되었습니다.'
+    })
+
+@app.route('/api/embedding-models')
+def get_embedding_models():
+    """사용 가능한 임베딩 모델 목록 반환"""
+    models = [
+        {
+            "id": "sentence-transformers/all-MiniLM-L6-v2",
+            "name": "All-MiniLM-L6-v2",
+            "description": "빠르고 효율적인 범용 모델",
+            "language": "multilingual",
+            "size": "80MB"
+        },
+        {
+            "id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            "name": "Paraphrase-Multilingual-MiniLM-L12-v2",
+            "description": "다국어 지원 고품질 모델",
+            "language": "multilingual",
+            "size": "420MB"
+        },
+        {
+            "id": "sentence-transformers/distiluse-base-multilingual-cased",
+            "name": "DistilUSE-Base-Multilingual",
+            "description": "균형잡힌 성능의 다국어 모델",
+            "language": "multilingual",
+            "size": "480MB"
+        },
+        {
+            "id": "sentence-transformers/all-mpnet-base-v2",
+            "name": "All-MPNet-Base-v2",
+            "description": "높은 품질의 영어 특화 모델",
+            "language": "english",
+            "size": "420MB"
+        }
+    ]
+    return jsonify(models)
 
 @app.route('/api/chat', methods=['POST'])
 def chat():

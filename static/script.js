@@ -40,6 +40,9 @@ class RAGManager {
         
         // RAG Manager 초기화
         this.initRAGManager();
+        
+        // 설정 모달 초기화
+        this.initSettingsModal();
     }
 
     async loadDocuments() {
@@ -97,15 +100,22 @@ class RAGManager {
         `;
         
         const categoryHTML = categories.map(category => `
-            <div class="category-item" data-category-id="${category.id}" onclick="ragManager.selectCategory(${category.id})">
-                <div class="category-icon" style="color: ${category.color}">
-                    <i class="${category.icon}"></i>
+            <div class="category-item" data-category-id="${category.id}">
+                <div class="category-main" onclick="ragManager.selectCategory(${category.id})">
+                    <div class="category-icon" style="color: ${category.color}">
+                        <i class="${category.icon}"></i>
+                    </div>
+                    <div class="category-info">
+                        <div class="category-name">${category.name}</div>
+                        <div class="category-description">${category.description}</div>
+                    </div>
+                    <div class="category-count">${category.document_count || 0}</div>
                 </div>
-                <div class="category-info">
-                    <div class="category-name">${category.name}</div>
-                    <div class="category-description">${category.description}</div>
+                <div class="category-actions">
+                    <button class="settings-btn" onclick="ragManager.openCategorySettings(${category.id})" title="카테고리 설정">
+                        <i class="fas fa-cog"></i>
+                    </button>
                 </div>
-                <div class="category-count">${category.document_count || 0}</div>
             </div>
         `).join('');
         
@@ -842,6 +852,185 @@ class RAGManager {
     toggleSidebar() {
         const sidebar = document.querySelector('.sidebar');
         sidebar.classList.toggle('open');
+    }
+
+    /**
+     * 설정 모달 초기화
+     */
+    initSettingsModal() {
+        const settingsModal = document.getElementById('settingsModal');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+        const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        const embeddingModelSelect = document.getElementById('embeddingModelSelect');
+
+        if (!settingsModal || !closeSettingsBtn || !cancelSettingsBtn || !saveSettingsBtn) {
+            console.log('설정 모달 요소를 찾을 수 없습니다.');
+            return;
+        }
+
+        // 모달 닫기
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        cancelSettingsBtn.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        // 설정 저장
+        saveSettingsBtn.addEventListener('click', () => {
+            this.saveCategorySettings();
+        });
+
+        // 임베딩 모델 변경 시 설명 업데이트
+        embeddingModelSelect.addEventListener('change', () => {
+            this.updateModelDescription();
+        });
+
+        // 임베딩 모델 목록 로드
+        this.loadEmbeddingModels();
+    }
+
+    /**
+     * 카테고리 설정 열기
+     */
+    async openCategorySettings(categoryId) {
+        try {
+            const response = await fetch('/api/categories');
+            const categories = await response.json();
+            const category = categories.find(cat => cat.id === categoryId);
+
+            if (!category) {
+                alert('카테고리를 찾을 수 없습니다.');
+                return;
+            }
+
+            // 현재 설정된 카테고리 정보 저장
+            this.currentSettingsCategory = category;
+
+            // 모달 제목 설정
+            document.getElementById('settingsCategoryName').textContent = `${category.name} 카테고리 설정`;
+
+            // 현재 설정값으로 폼 채우기
+            const settings = category.settings || {};
+            document.getElementById('embeddingModelSelect').value = settings.embedding_model || 'sentence-transformers/all-MiniLM-L6-v2';
+            document.getElementById('chunkSizeInput').value = settings.chunk_size || 512;
+            document.getElementById('chunkOverlapInput').value = settings.chunk_overlap || 50;
+            document.getElementById('chunkStrategySelect').value = settings.chunk_strategy || 'sentence';
+
+            // 모델 설명 업데이트
+            this.updateModelDescription();
+
+            // 모달 표시
+            document.getElementById('settingsModal').style.display = 'block';
+
+        } catch (error) {
+            console.error('카테고리 설정 로드 실패:', error);
+            alert('카테고리 설정을 불러오는데 실패했습니다.');
+        }
+    }
+
+    /**
+     * 임베딩 모델 목록 로드
+     */
+    async loadEmbeddingModels() {
+        try {
+            const response = await fetch('/api/embedding-models');
+            const models = await response.json();
+
+            const select = document.getElementById('embeddingModelSelect');
+            if (!select) return;
+
+            select.innerHTML = models.map(model => 
+                `<option value="${model.id}">${model.name} (${model.size})</option>`
+            ).join('');
+
+            // 모델 정보 저장
+            this.embeddingModels = models;
+
+        } catch (error) {
+            console.error('임베딩 모델 목록 로드 실패:', error);
+        }
+    }
+
+    /**
+     * 모델 설명 업데이트
+     */
+    updateModelDescription() {
+        const select = document.getElementById('embeddingModelSelect');
+        const description = document.getElementById('modelDescription');
+        
+        if (!select || !description || !this.embeddingModels) return;
+
+        const selectedModel = this.embeddingModels.find(model => model.id === select.value);
+        if (selectedModel) {
+            description.innerHTML = `
+                <strong>${selectedModel.description}</strong><br>
+                언어: ${selectedModel.language === 'multilingual' ? '다국어 지원' : '영어'}<br>
+                크기: ${selectedModel.size}
+            `;
+        }
+    }
+
+    /**
+     * 카테고리 설정 저장
+     */
+    async saveCategorySettings() {
+        if (!this.currentSettingsCategory) {
+            alert('설정할 카테고리가 선택되지 않았습니다.');
+            return;
+        }
+
+        const settings = {
+            embedding_model: document.getElementById('embeddingModelSelect').value,
+            chunk_size: parseInt(document.getElementById('chunkSizeInput').value),
+            chunk_overlap: parseInt(document.getElementById('chunkOverlapInput').value),
+            chunk_strategy: document.getElementById('chunkStrategySelect').value
+        };
+
+        // 유효성 검사
+        if (settings.chunk_size < 128 || settings.chunk_size > 2048) {
+            alert('청크 크기는 128-2048 사이여야 합니다.');
+            return;
+        }
+
+        if (settings.chunk_overlap < 0 || settings.chunk_overlap > 200) {
+            alert('청크 중복은 0-200 사이여야 합니다.');
+            return;
+        }
+
+        if (settings.chunk_overlap >= settings.chunk_size) {
+            alert('청크 중복은 청크 크기보다 작아야 합니다.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/categories/${this.currentSettingsCategory.id}/settings`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert(result.message);
+                document.getElementById('settingsModal').style.display = 'none';
+                
+                // 카테고리 목록 새로고침
+                this.loadCategories();
+                
+            } else {
+                alert(`설정 저장 실패: ${result.error}`);
+            }
+
+        } catch (error) {
+            console.error('설정 저장 오류:', error);
+            alert('설정 저장 중 오류가 발생했습니다.');
+        }
     }
 }
 
