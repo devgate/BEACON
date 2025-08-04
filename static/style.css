@@ -150,70 +150,6 @@ body {
     margin-bottom: 30px;
 }
 
-.document-selector {
-    width: 100%;
-    padding: 8px 12px;
-    background: #1a202c;
-    border: 1px solid #4a5568;
-    border-radius: 6px;
-    color: #ffffff;
-    font-size: 14px;
-}
-
-.document-list {
-    background: #1a202c;
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.list-header {
-    display: flex;
-    background: #4a5568;
-    padding: 12px;
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.header-no {
-    width: 40px;
-}
-
-.header-title {
-    flex: 1;
-}
-
-.document-items {
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.document-item {
-    display: flex;
-    padding: 12px;
-    border-bottom: 1px solid #4a5568;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.document-item:hover {
-    background: #2d3748;
-}
-
-.document-item:last-child {
-    border-bottom: none;
-}
-
-.item-no {
-    width: 40px;
-    color: #a0aec0;
-    font-size: 14px;
-}
-
-.item-title {
-    flex: 1;
-    font-size: 14px;
-    color: #ffffff;
-}
 
 .empty-message {
     text-align: center;
@@ -245,61 +181,6 @@ body {
     color: #ffffff;
 }
 
-.search-container {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 15px;
-}
-
-.search-input {
-    flex: 1;
-    padding: 8px 12px;
-    background: #1a202c;
-    border: 1px solid #4a5568;
-    border-radius: 4px;
-    color: #ffffff;
-    font-size: 14px;
-}
-
-.search-input::placeholder {
-    color: #a0aec0;
-}
-
-.edit-btn {
-    padding: 8px 16px;
-    background: #4a5568;
-    border: none;
-    border-radius: 4px;
-    color: #ffffff;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.edit-btn:hover {
-    background: #2d3748;
-}
-
-.history-filters {
-    display: flex;
-    gap: 8px;
-}
-
-.filter-btn {
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid #4a5568;
-    border-radius: 4px;
-    color: #a0aec0;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.filter-btn.active,
-.filter-btn:hover {
-    background: #00d4ff;
-    color: #1a202c;
-    border-color: #00d4ff;
-}
 
 /* 채팅 영역 */
 .chat-area {

@@ -16,7 +16,6 @@ class RAGManager {
         this.chatInput = document.getElementById('chatInput');
         this.sendBtn = document.getElementById('sendBtn');
         this.chatMessages = document.getElementById('chatMessages');
-        this.documentList = document.getElementById('documentList');
 
         // 페이지 요소들
         this.chatPage = document.getElementById('chatPage');
@@ -48,7 +47,8 @@ class RAGManager {
             const response = await fetch('/api/documents');
             const documents = await response.json();
             
-            this.renderDocuments(documents);
+            // 문서는 카테고리별로만 표시하므로 별도 renderDocuments 호출하지 않음
+            console.log(`총 ${documents.length}개의 문서가 로드되었습니다.`);
         } catch (error) {
             console.error('문서 로드 실패:', error);
         }
@@ -185,7 +185,7 @@ class RAGManager {
             const response = await fetch(`/api/categories/${categoryId}/documents`);
             const documents = await response.json();
             
-            this.renderDocuments(documents);
+            console.log(`카테고리 ${categoryId}의 문서 ${documents.length}개를 로드했습니다.`);
             
             // RAG Manager에서도 필터링
             if (document.getElementById('ragManagerPage').style.display !== 'none') {
@@ -196,48 +196,6 @@ class RAGManager {
         }
     }
 
-    renderDocuments(documents) {
-        this.documentList.innerHTML = '';
-        
-        if (documents.length === 0) {
-            const emptyMessage = document.createElement('div');
-            emptyMessage.className = 'empty-message';
-            emptyMessage.innerHTML = `
-                <i class="fas fa-file-upload"></i>
-                <p>업로드된 문서가 없습니다.</p>
-                <p>PDF 파일을 업로드해주세요.</p>
-            `;
-            this.documentList.appendChild(emptyMessage);
-            return;
-        }
-        
-        documents.forEach(doc => {
-            const docItem = document.createElement('div');
-            docItem.className = 'document-item';
-            docItem.innerHTML = `
-                <div class="item-no">${doc.id}</div>
-                <div class="item-title">${doc.title}</div>
-            `;
-            
-            docItem.addEventListener('click', (e) => {
-                this.selectDocument(doc, e);
-            });
-            
-            this.documentList.appendChild(docItem);
-        });
-    }
-
-    selectDocument(doc, event) {
-        // 기존 선택 해제
-        document.querySelectorAll('.document-item').forEach(item => {
-            item.classList.remove('selected');
-        });
-        
-        // 새로운 선택 표시
-        event.currentTarget.classList.add('selected');
-        
-        this.addSystemMessage(`문서 "${doc.title}"가 선택되었습니다. 이 문서에 대해 질문해보세요.`);
-    }
 
     async sendMessage() {
         const message = this.chatInput.value.trim();
