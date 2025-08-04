@@ -178,15 +178,27 @@ def chat():
     """
     data = request.get_json()
     user_message = data.get('message', '')
+    selected_category_id = data.get('category_id', None)  # 선택된 카테고리 ID
     
     try:
         # 관련 문서 및 이미지 저장소 초기화
         relevant_docs = []
         relevant_images = []
         
+        # 검색 대상 문서 필터링 (카테고리가 선택된 경우 해당 카테고리만)
+        search_documents = documents
+        if selected_category_id:
+            search_documents = [doc for doc in documents if doc.get('category_id') == selected_category_id]
+            print(f"선택된 카테고리 {selected_category_id}의 문서 {len(search_documents)}개를 검색 대상으로 설정")
+        
         # 업로드된 문서가 없는 경우 안내 메시지 반환
-        if len(documents) == 0:
-            response = "현재 업로드된 문서가 없습니다. PDF 파일을 먼저 업로드한 후 문서에 대해 질문해주세요."
+        if len(search_documents) == 0:
+            if selected_category_id:
+                # 선택된 카테고리의 이름 찾기
+                category_name = next((cat['name'] for cat in categories if cat['id'] == selected_category_id), '선택된 카테고리')
+                response = f"현재 '{category_name}' 카테고리에 업로드된 문서가 없습니다. 해당 카테고리에 PDF 파일을 먼저 업로드한 후 질문해주세요."
+            else:
+                response = "현재 업로드된 문서가 없습니다. PDF 파일을 먼저 업로드한 후 문서에 대해 질문해주세요."
         else:
             # 인사말 및 간단한 질문 필터링
             # 이런 경우에는 문서 검색을 하지 않고 일반적인 응답 생성
@@ -202,8 +214,8 @@ def chat():
                 # 검색 키워드 전처리 (1글자 이하 키워드 제외로 노이즈 감소)
                 search_keywords = [word.strip() for word in user_message.lower().split() if len(word.strip()) > 1]
                 
-                # 각 문서에 대해 관련성 검사
-                for doc in documents:
+                # 각 문서에 대해 관련성 검사 (필터링된 문서만 대상)
+                for doc in search_documents:
                     # 문서 제목과 내용을 합쳐서 검색 대상 텍스트 생성
                     doc_text = (doc['title'] + ' ' + doc['content']).lower()
                     
@@ -266,8 +278,12 @@ def chat():
     except Exception as e:
         print(f"Ollama API 오류: {e}")
         # 오류 발생 시 기본 응답
-        if len(documents) == 0:
-            response = "현재 업로드된 문서가 없습니다. PDF 파일을 먼저 업로드한 후 문서에 대해 질문해주세요."
+        if len(search_documents) == 0:
+            if selected_category_id:
+                category_name = next((cat['name'] for cat in categories if cat['id'] == selected_category_id), '선택된 카테고리')
+                response = f"현재 '{category_name}' 카테고리에 업로드된 문서가 없습니다. 해당 카테고리에 PDF 파일을 먼저 업로드한 후 질문해주세요."
+            else:
+                response = "현재 업로드된 문서가 없습니다. PDF 파일을 먼저 업로드한 후 문서에 대해 질문해주세요."
         elif '안녕' in user_message or 'hello' in user_message.lower():
             response = "안녕하세요! 무엇을 도와드릴까요? (현재 로컬 AI가 오프라인 상태입니다)"
         elif '문서' in user_message:

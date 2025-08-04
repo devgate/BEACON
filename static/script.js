@@ -61,6 +61,15 @@ class RAGManager {
             
             this.renderCategories(categories);
             this.populateCategorySelect(categories);
+            
+            // 초기 로드 시 "전체" 카테고리를 기본으로 선택
+            if (!this.selectedCategoryId) {
+                setTimeout(() => {
+                    document.querySelectorAll(`[data-category-id="all"]`).forEach(item => {
+                        item.classList.add('active');
+                    });
+                }, 100);
+            }
         } catch (error) {
             console.error('카테고리 로드 실패:', error);
         }
@@ -71,6 +80,21 @@ class RAGManager {
         const ragCategoryList = document.getElementById('ragCategoryList');
         
         if (!categoryList && !ragCategoryList) return;
+        
+        // "전체" 옵션을 맨 위에 추가
+        const totalDocs = categories.reduce((sum, cat) => sum + (cat.document_count || 0), 0);
+        const allCategoryHTML = `
+            <div class="category-item" data-category-id="all" onclick="ragManager.selectAllCategories()">
+                <div class="category-icon" style="color: #718096">
+                    <i class="fas fa-folder-open"></i>
+                </div>
+                <div class="category-info">
+                    <div class="category-name">전체</div>
+                    <div class="category-description">모든 카테고리의 문서</div>
+                </div>
+                <div class="category-count">${totalDocs}</div>
+            </div>
+        `;
         
         const categoryHTML = categories.map(category => `
             <div class="category-item" data-category-id="${category.id}" onclick="ragManager.selectCategory(${category.id})">
@@ -85,11 +109,13 @@ class RAGManager {
             </div>
         `).join('');
         
+        const fullHTML = allCategoryHTML + categoryHTML;
+        
         if (categoryList) {
-            categoryList.innerHTML = categoryHTML;
+            categoryList.innerHTML = fullHTML;
         }
         if (ragCategoryList) {
-            ragCategoryList.innerHTML = categoryHTML;
+            ragCategoryList.innerHTML = fullHTML;
         }
     }
 
@@ -116,6 +142,42 @@ class RAGManager {
         
         // 선택된 카테고리의 문서들 로드
         this.loadDocumentsByCategory(categoryId);
+        
+        // 채팅 영역에 카테고리 선택 알림
+        this.showCategorySelection(categoryId);
+    }
+
+    selectAllCategories() {
+        this.selectedCategoryId = null; // null이면 전체 문서 검색
+        
+        // 카테고리 선택 상태 업데이트 (시각적 표시)
+        document.querySelectorAll('.category-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        document.querySelectorAll(`[data-category-id="all"]`).forEach(item => {
+            item.classList.add('active');
+        });
+        
+        // 전체 문서 로드
+        this.loadDocuments();
+        
+        // 채팅 영역에 전체 선택 알림
+        this.addSystemMessage('📂 모든 카테고리가 선택되었습니다. 전체 문서를 대상으로 질문하실 수 있습니다.');
+    }
+
+    async showCategorySelection(categoryId) {
+        try {
+            const response = await fetch('/api/categories');
+            const categories = await response.json();
+            const selectedCategory = categories.find(cat => cat.id === categoryId);
+            
+            if (selectedCategory) {
+                this.addSystemMessage(`📁 "${selectedCategory.name}" 카테고리가 선택되었습니다. 이제 이 카테고리의 문서들만을 대상으로 질문하실 수 있습니다. (문서 ${selectedCategory.document_count}개)`);
+            }
+        } catch (error) {
+            console.error('카테고리 정보 로드 실패:', error);
+        }
     }
 
     async loadDocumentsByCategory(categoryId) {
@@ -189,12 +251,21 @@ class RAGManager {
         const loadingDiv = this.addMessage('답변을 생성하고 있습니다...', 'ai', true);
 
         try {
+            // 채팅 요청 데이터 준비
+            const chatData = { message };
+            
+            // 선택된 카테고리가 있으면 추가
+            if (this.selectedCategoryId) {
+                chatData.category_id = this.selectedCategoryId;
+                console.log(`선택된 카테고리 ${this.selectedCategoryId}로 채팅 요청`);
+            }
+            
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ message })
+                body: JSON.stringify(chatData)
             });
 
             const data = await response.json();
