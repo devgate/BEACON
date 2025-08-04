@@ -357,17 +357,17 @@ class RAGManager {
 
     // 파일 업로드 관련 메서드들
     initFileUpload() {
-        const attachBtn = document.getElementById('attachBtn');
         const uploadContainer = document.getElementById('uploadContainer');
         const closeUploadBtn = document.getElementById('closeUploadBtn');
         const uploadZone = document.getElementById('uploadZone');
         const fileInput = document.getElementById('fileInput');
         const selectFileBtn = document.getElementById('selectFileBtn');
 
-        // 업로드 버튼 클릭
-        attachBtn.addEventListener('click', () => {
-            uploadContainer.style.display = 'block';
-        });
+        // 요소가 존재하지 않으면 함수 종료
+        if (!uploadContainer || !closeUploadBtn || !uploadZone || !fileInput || !selectFileBtn) {
+            console.log('업로드 관련 요소를 찾을 수 없습니다.');
+            return;
+        }
 
         // 업로드 창 닫기
         closeUploadBtn.addEventListener('click', () => {
@@ -375,27 +375,54 @@ class RAGManager {
             this.resetUploadForm();
         });
 
-        // 파일 선택 버튼
-        selectFileBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // 이벤트 버블링 방지
-            fileInput.click();
+        // 파일 선택 버튼 - 더 강력한 이벤트 핸들러
+        selectFileBtn.addEventListener('click', function(e) {
+            console.log('파일 선택 버튼 클릭됨');
+            e.stopPropagation();
+            e.preventDefault();
+            
+            // 파일 입력 요소를 직접 트리거
+            const fileInputElement = document.getElementById('fileInput');
+            if (fileInputElement) {
+                console.log('파일 입력 요소 찾음, 클릭 트리거');
+                fileInputElement.click();
+            } else {
+                console.error('파일 입력 요소를 찾을 수 없음');
+            }
+        });
+
+        // 버튼에 마우스 오버 이벤트도 추가하여 버튼이 인식되는지 확인
+        selectFileBtn.addEventListener('mouseenter', function() {
+            console.log('파일 선택 버튼에 마우스 오버');
         });
 
         // 업로드 영역 클릭 (버튼이 아닌 영역만)
         uploadZone.addEventListener('click', (e) => {
-            // 버튼을 클릭한 경우가 아닐 때만 파일 입력 트리거
+            // 파일 선택 버튼을 클릭한 경우에는 처리하지 않음
+            if (e.target.classList.contains('select-file-btn') || e.target.closest('.select-file-btn')) {
+                return;
+            }
+            
+            // 버튼이 아닌 영역을 클릭한 경우에만 파일 입력 트리거
             if (e.target === uploadZone || e.target.classList.contains('upload-icon') || e.target.tagName === 'P') {
+                console.log('업로드 영역 클릭됨');
                 fileInput.click();
             }
         });
 
         // 파일 선택 시
         fileInput.addEventListener('change', (e) => {
+            console.log('파일 선택됨:', e.target.files);
             if (e.target.files.length > 0) {
                 this.handleFileUpload(e.target.files[0]);
                 // 업로드 후 즉시 파일 입력 초기화하여 같은 파일 재선택 가능하게 함
                 e.target.value = '';
             }
+        });
+
+        // fileInput 클릭 이벤트도 추가하여 다이얼로그가 열리는지 확인
+        fileInput.addEventListener('click', () => {
+            console.log('파일 입력 요소 클릭됨');
         });
 
         // 드래그 앤 드롭
