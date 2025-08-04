@@ -16,10 +16,15 @@
                     <i class="fas fa-robot"></i>
                     <span class="logo-text">BEACON</span>
                 </div>
-                <nav class="nav-breadcrumb">
-                    <span class="nav-item">BEACON Chat</span>
-                    <span class="nav-separator">/</span>
-                    <span class="nav-item active">RAG Manager</span>
+                <nav class="main-nav">
+                    <button class="nav-tab active" id="chatTab">
+                        <i class="fas fa-comments"></i>
+                        <span>Chat</span>
+                    </button>
+                    <button class="nav-tab" id="ragManagerTab">
+                        <i class="fas fa-cogs"></i>
+                        <span>RAG Manager</span>
+                    </button>
                 </nav>
             </div>
             <div class="header-right">
@@ -34,91 +39,156 @@
             </div>
         </header>
 
-        <div class="main-container">
-            <!-- 사이드바 -->
-            <aside class="sidebar">
-                <div class="sidebar-section">
-                    <select class="document-selector">
-                        <option>Document</option>
-                    </select>
-                </div>
-
-                <div class="sidebar-section">
-                    <div class="document-list">
-                        <div class="list-header">
-                            <span class="header-no">No</span>
-                            <span class="header-title">저장소명</span>
-                        </div>
-                        <div id="documentList" class="document-items">
-                            <!-- 문서 목록이 여기에 동적으로 추가됩니다 -->
+        <!-- Chat 페이지 -->
+        <div class="page-container" id="chatPage">
+            <div class="main-container">
+                <!-- 사이드바 -->
+                <aside class="sidebar">
+                    <div class="sidebar-section">
+                        <h3>문서 카테고리</h3>
+                        <div id="categoryList" class="category-list">
+                            <!-- 카테고리 목록이 여기에 동적으로 추가됩니다 -->
                         </div>
                     </div>
-                </div>
 
-                <div class="sidebar-section">
-                    <h3>Dialogue History</h3>
-                    <div class="search-container">
-                        <input type="text" placeholder="대화내용 입력하세요" class="search-input">
-                        <button class="edit-btn">Edit</button>
+                    <div class="sidebar-section">
+                        <h3>업로드된 문서</h3>
+                        <div class="document-list">
+                            <div class="list-header">
+                                <span class="header-no">No</span>
+                                <span class="header-title">문서명</span>
+                            </div>
+                            <div id="documentList" class="document-items">
+                                <!-- 문서 목록이 여기에 동적으로 추가됩니다 -->
+                            </div>
+                        </div>
                     </div>
-                    <div class="history-filters">
-                        <button class="filter-btn active">오늘</button>
-                        <button class="filter-btn">지난 대화</button>
+
+                    <div class="sidebar-section">
+                        <h3>대화 기록</h3>
+                        <div class="search-container">
+                            <input type="text" placeholder="대화내용 검색" class="search-input">
+                        </div>
+                        <div class="history-filters">
+                            <button class="filter-btn active">오늘</button>
+                            <button class="filter-btn">지난 대화</button>
+                        </div>
                     </div>
-                </div>
-            </aside>
+                </aside>
 
-            <!-- 메인 채팅 영역 -->
-            <main class="chat-area">
-                <div class="chat-welcome">
-                    <h1>Hello! I am your AI assistant</h1>
-                    <div class="welcome-subtitle">
-                        <i class="fas fa-chevron-right"></i>
-                        <span>개인/업무용을 포함한 설정</span>
+                <!-- 메인 채팅 영역 -->
+                <main class="chat-area">
+                    <div class="chat-welcome">
+                        <h1>안녕하세요! AI 어시스턴트입니다</h1>
+                        <div class="welcome-subtitle">
+                            <i class="fas fa-comments"></i>
+                            <span>업로드된 문서에 대해 자유롭게 질문해보세요</span>
+                        </div>
                     </div>
-                </div>
 
-                <div id="chatMessages" class="chat-messages">
-                    <!-- 채팅 메시지가 여기에 표시됩니다 -->
-                </div>
+                    <div id="chatMessages" class="chat-messages">
+                        <!-- 채팅 메시지가 여기에 표시됩니다 -->
+                    </div>
 
-                <!-- PDF 업로드 영역 -->
-                <div class="upload-container" id="uploadContainer" style="display: none;">
-                    <div class="upload-area">
-                        <div class="upload-header">
-                            <h3>PDF 파일 업로드</h3>
-                            <button class="close-upload-btn" id="closeUploadBtn">
-                                <i class="fas fa-times"></i>
+                    <div class="chat-input-container">
+                        <div class="chat-input-wrapper">
+                            <input type="text" id="chatInput" placeholder="질문을 입력하세요..." class="chat-input">
+                            <button id="sendBtn" class="send-btn">
+                                <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
-                        <div class="upload-zone" id="uploadZone">
-                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                            <p>PDF 파일을 드래그하거나 클릭하여 업로드하세요</p>
-                            <input type="file" id="fileInput" accept=".pdf" style="display: none;">
-                            <button class="select-file-btn" id="selectFileBtn">파일 선택</button>
+                    </div>
+                </main>
+            </div>
+        </div>
+
+        <!-- RAG Manager 페이지 -->
+        <div class="page-container" id="ragManagerPage" style="display: none;">
+            <div class="main-container">
+                <!-- 파일 관리 사이드바 -->
+                <aside class="sidebar">
+                    <div class="sidebar-section">
+                        <h3>문서 카테고리</h3>
+                        <div id="ragCategoryList" class="category-list">
+                            <!-- 카테고리 목록이 여기에 동적으로 추가됩니다 -->
                         </div>
-                        <div class="upload-progress" id="uploadProgress" style="display: none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progressFill"></div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>파일 업로드</h3>
+                        <button class="upload-trigger-btn" id="uploadTriggerBtn">
+                            <i class="fas fa-plus"></i>
+                            <span>새 파일 업로드</span>
+                        </button>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>파일 필터</h3>
+                        <div class="filter-options">
+                            <button class="filter-btn active" data-filter="all">전체</button>
+                            <button class="filter-btn" data-filter="recent">최근</button>
+                            <button class="filter-btn" data-filter="large">대용량</button>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <h3>통계</h3>
+                        <div class="stats-info">
+                            <div class="stat-item">
+                                <span class="stat-label">총 문서:</span>
+                                <span class="stat-value" id="totalDocs">0</span>
                             </div>
-                            <p id="progressText">업로드 중...</p>
+                            <div class="stat-item">
+                                <span class="stat-label">총 용량:</span>
+                                <span class="stat-value" id="totalSize">0 MB</span>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </aside>
 
-                <div class="chat-input-container">
-                    <div class="chat-input-wrapper">
-                        <input type="text" id="chatInput" placeholder="Ask me anything..." class="chat-input">
-                        <button class="attach-btn" id="attachBtn">
-                            <i class="fas fa-paperclip"></i>
-                        </button>
-                        <button id="sendBtn" class="send-btn">
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
+                <!-- 메인 파일 관리 영역 -->
+                <main class="rag-manager-area">
+                    <div class="manager-header">
+                        <h1>RAG 문서 관리</h1>
+                        <p>PDF 파일을 업로드하고 관리하세요</p>
                     </div>
-                </div>
 
-            </main>
+                    <div id="fileManagerContent" class="file-manager-content">
+                        <!-- 파일 목록이 여기에 표시됩니다 -->
+                    </div>
+
+                    <!-- PDF 업로드 영역 -->
+                    <div class="upload-container" id="uploadContainer" style="display: none;">
+                        <div class="upload-area">
+                            <div class="upload-header">
+                                <h3>PDF 파일 업로드</h3>
+                                <button class="close-upload-btn" id="closeUploadBtn">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="category-selection">
+                                <label for="categorySelect">카테고리 선택:</label>
+                                <select id="categorySelect" class="category-select">
+                                    <option value="4">일반</option>
+                                    <!-- 카테고리 옵션이 동적으로 추가됩니다 -->
+                                </select>
+                            </div>
+                            <div class="upload-zone" id="uploadZone">
+                                <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                                <p>PDF 파일을 드래그하거나 클릭하여 업로드하세요</p>
+                                <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                                <button class="select-file-btn" id="selectFileBtn">파일 선택</button>
+                            </div>
+                            <div class="upload-progress" id="uploadProgress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <p id="progressText">업로드 중...</p>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </div>
         </div>
     </div>
 

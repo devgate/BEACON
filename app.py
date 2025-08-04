@@ -87,9 +87,21 @@ def extract_images_from_pdf(file_stream, document_id):
 # 업로드된 PDF 문서들의 메타데이터와 내용을 저장
 documents = []
 
+# 문서 카테고리 저장소
+# 각 영역별로 문서를 분류하여 관리
+categories = [
+    {"id": 1, "name": "재무", "description": "재무 관련 문서", "icon": "fas fa-calculator", "color": "#10B981"},
+    {"id": 2, "name": "맛집", "description": "맛집 정보 문서", "icon": "fas fa-utensils", "color": "#F59E0B"},
+    {"id": 3, "name": "매뉴얼", "description": "사용 설명서 및 매뉴얼", "icon": "fas fa-book", "color": "#3B82F6"},
+    {"id": 4, "name": "일반", "description": "기타 문서", "icon": "fas fa-file-alt", "color": "#6B7280"}
+]
+
 # 문서 ID 자동 증가 카운터
 # 새로운 문서 업로드 시 고유 ID 생성에 사용
 document_counter = 0
+
+# 카테고리 ID 자동 증가 카운터
+category_counter = len(categories)
 
 # 채팅 기록 저장소
 # 사용자와 AI 간의 대화 내역을 시간순으로 저장
@@ -101,7 +113,62 @@ def index():
 
 @app.route('/api/documents')
 def get_documents():
+    """전체 문서 목록 조회"""
     return jsonify(documents)
+
+@app.route('/api/categories')
+def get_categories():
+    """카테고리 목록 조회"""
+    # 각 카테고리별 문서 개수 추가
+    categories_with_count = []
+    for category in categories:
+        doc_count = len([doc for doc in documents if doc.get('category_id') == category['id']])
+        category_with_count = category.copy()
+        category_with_count['document_count'] = doc_count
+        categories_with_count.append(category_with_count)
+    
+    return jsonify(categories_with_count)
+
+@app.route('/api/categories/<int:category_id>/documents')
+def get_documents_by_category(category_id):
+    """특정 카테고리의 문서 목록 조회"""
+    category_documents = [doc for doc in documents if doc.get('category_id') == category_id]
+    return jsonify(category_documents)
+
+@app.route('/api/categories', methods=['POST'])
+def create_category():
+    """새 카테고리 생성"""
+    global category_counter
+    
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    icon = data.get('icon', 'fas fa-folder')
+    color = data.get('color', '#6B7280')
+    
+    if not name:
+        return jsonify({'error': '카테고리 이름을 입력해주세요.'}), 400
+    
+    # 중복 이름 체크
+    if any(cat['name'] == name for cat in categories):
+        return jsonify({'error': '이미 존재하는 카테고리 이름입니다.'}), 400
+    
+    category_counter += 1
+    new_category = {
+        'id': category_counter,
+        'name': name,
+        'description': description,
+        'icon': icon,
+        'color': color
+    }
+    
+    categories.append(new_category)
+    
+    return jsonify({
+        'success': True,
+        'category': new_category,
+        'message': f'카테고리 "{name}"가 생성되었습니다.'
+    })
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -234,6 +301,9 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
     
+    # 카테고리 ID 가져오기 (기본값: 일반 카테고리)
+    category_id = int(request.form.get('category_id', 4))  # 기본값: 일반 카테고리
+    
     if file and allowed_file(file.filename):
         try:
             # 파일 데이터를 메모리에 저장
@@ -259,7 +329,7 @@ def upload_file():
                 image_stream = io.BytesIO(file_data)
                 images = extract_images_from_pdf(image_stream, document_counter)
                 
-                # 문서 리스트에 추가
+                # 문서 리스트에 추가 (카테고리 정보 포함)
                 new_doc = {
                     'id': document_counter,
                     'title': filename,
@@ -267,7 +337,8 @@ def upload_file():
                     'type': 'uploaded',
                     'images': images,
                     'file_path': file_path,
-                    'original_filename': file.filename
+                    'original_filename': file.filename,
+                    'category_id': category_id
                 }
                 documents.append(new_doc)
                 
@@ -320,6 +391,50 @@ def download_file(doc_id):
         as_attachment=True, 
         download_name=doc.get('original_filename', doc['title'])
     )
+
+@app.route('/api/documents/<int:doc_id>', methods=['DELETE'])
+def delete_document(doc_id):
+    """
+    문서 삭제 엔드포인트
+    
+    Args:
+        doc_id (int): 삭제할 문서의 ID
+        
+    Returns:
+        성공/실패 메시지
+    """
+    global documents, document_counter
+    
+    # 삭제할 문서 찾기
+    doc_to_delete = next((d for d in documents if d['id'] == doc_id), None)
+    
+    if not doc_to_delete:
+        return jsonify({'error': '문서를 찾을 수 없습니다.'}), 404
+    
+    try:
+        # 파일 삭제 (존재하는 경우)
+        if doc_to_delete.get('file_path') and os.path.exists(doc_to_delete['file_path']):
+            os.remove(doc_to_delete['file_path'])
+            print(f"파일 삭제됨: {doc_to_delete['file_path']}")
+        
+        # 이미지 디렉토리 삭제 (존재하는 경우)
+        image_dir = os.path.join('static', 'images', f'doc_{doc_id}')
+        if os.path.exists(image_dir):
+            import shutil
+            shutil.rmtree(image_dir)
+            print(f"이미지 디렉토리 삭제됨: {image_dir}")
+        
+        # 문서 목록에서 제거
+        documents = [d for d in documents if d['id'] != doc_id]
+        
+        return jsonify({
+            'success': True,
+            'message': f'문서 "{doc_to_delete["title"]}"가 삭제되었습니다.'
+        })
+        
+    except Exception as e:
+        print(f"문서 삭제 오류: {e}")
+        return jsonify({'error': f'문서 삭제 중 오류가 발생했습니다: {str(e)}'}), 500
 
 @app.route('/api/weather')
 def get_weather():
