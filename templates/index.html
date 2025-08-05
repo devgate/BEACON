@@ -123,7 +123,7 @@
                 </aside>
 
                 <!-- 메인 파일 관리 영역 -->
-                <main class="rag-manager-area">
+                <main class="rag-manager-area" id="fileManagerArea">
                     <div class="manager-header">
                         <h1>RAG 문서 관리</h1>
                         <p>PDF 파일을 업로드하고 관리하세요</p>
@@ -132,6 +132,69 @@
                     <div id="fileManagerContent" class="file-manager-content">
                         <!-- 파일 목록이 여기에 표시됩니다 -->
                     </div>
+                </main>
+
+                <!-- 카테고리 설정 패널 -->
+                <aside class="settings-panel" id="settingsPanel" style="display: none;">
+                    <div class="settings-header">
+                        <h2 id="settingsPanelTitle">카테고리 설정</h2>
+                        <button class="close-settings-panel" id="closeSettingsPanel">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="settings-content">
+                        <div class="settings-section">
+                            <h3 id="settingsCategoryName">카테고리 설정</h3>
+                            
+                            <div class="setting-group">
+                                <label for="embeddingModelSelect">임베딩 모델:</label>
+                                <select id="embeddingModelSelect" class="setting-select">
+                                    <!-- 모델 옵션이 동적으로 추가됩니다 -->
+                                </select>
+                                <div class="setting-description" id="modelDescription">
+                                    모델 설명이 여기에 표시됩니다.
+                                </div>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="chunkSizeInput">청크 크기:</label>
+                                <input type="number" id="chunkSizeInput" class="setting-input" 
+                                       min="128" max="2048" step="64" value="512">
+                                <div class="setting-description">
+                                    문서를 나누는 단위의 크기 (128-2048 토큰)
+                                </div>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="chunkOverlapInput">청크 중복:</label>
+                                <input type="number" id="chunkOverlapInput" class="setting-input" 
+                                       min="0" max="200" step="10" value="50">
+                                <div class="setting-description">
+                                    인접한 청크 간의 중복 토큰 수 (0-200)
+                                </div>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="chunkStrategySelect">청킹 전략:</label>
+                                <select id="chunkStrategySelect" class="setting-select">
+                                    <option value="sentence">문장 단위</option>
+                                    <option value="paragraph">문단 단위</option>
+                                    <option value="section">섹션 단위</option>
+                                    <option value="fixed">고정 크기</option>
+                                </select>
+                                <div class="setting-description">
+                                    문서를 나누는 방식을 선택합니다.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-footer">
+                        <button class="btn-cancel" id="cancelSettingsBtn">취소</button>
+                        <button class="btn-save" id="saveSettingsBtn">저장</button>
+                    </div>
+                </aside>
 
                     <!-- PDF 업로드 영역 -->
                     <div class="upload-container" id="uploadContainer" style="display: none;">
