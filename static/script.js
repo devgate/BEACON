@@ -855,27 +855,27 @@ class RAGManager {
     }
 
     /**
-     * 설정 모달 초기화
+     * 설정 패널 초기화
      */
     initSettingsModal() {
-        const settingsModal = document.getElementById('settingsModal');
-        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const closeSettingsPanel = document.getElementById('closeSettingsPanel');
         const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
         const embeddingModelSelect = document.getElementById('embeddingModelSelect');
 
-        if (!settingsModal || !closeSettingsBtn || !cancelSettingsBtn || !saveSettingsBtn) {
-            console.log('설정 모달 요소를 찾을 수 없습니다.');
+        if (!settingsPanel || !closeSettingsPanel || !cancelSettingsBtn || !saveSettingsBtn) {
+            console.log('설정 패널 요소를 찾을 수 없습니다.');
             return;
         }
 
-        // 모달 닫기
-        closeSettingsBtn.addEventListener('click', () => {
-            settingsModal.style.display = 'none';
+        // 설정 패널 닫기 (돌아가기)
+        closeSettingsPanel.addEventListener('click', () => {
+            this.hideSettingsPanel();
         });
 
         cancelSettingsBtn.addEventListener('click', () => {
-            settingsModal.style.display = 'none';
+            this.hideSettingsPanel();
         });
 
         // 설정 저장
@@ -884,16 +884,18 @@ class RAGManager {
         });
 
         // 임베딩 모델 변경 시 설명 업데이트
-        embeddingModelSelect.addEventListener('change', () => {
-            this.updateModelDescription();
-        });
+        if (embeddingModelSelect) {
+            embeddingModelSelect.addEventListener('change', () => {
+                this.updateModelDescription();
+            });
+        }
 
         // 임베딩 모델 목록 로드
         this.loadEmbeddingModels();
     }
 
     /**
-     * 카테고리 설정 열기
+     * 카테고리 설정 열기 (오른쪽 페이지로)
      */
     async openCategorySettings(categoryId) {
         try {
@@ -909,7 +911,8 @@ class RAGManager {
             // 현재 설정된 카테고리 정보 저장
             this.currentSettingsCategory = category;
 
-            // 모달 제목 설정
+            // 설정 패널 제목 설정
+            document.getElementById('settingsPanelTitle').textContent = `${category.name} 설정`;
             document.getElementById('settingsCategoryName').textContent = `${category.name} 카테고리 설정`;
 
             // 현재 설정값으로 폼 채우기
@@ -922,8 +925,8 @@ class RAGManager {
             // 모델 설명 업데이트
             this.updateModelDescription();
 
-            // 모달 표시
-            document.getElementById('settingsModal').style.display = 'block';
+            // 설정 패널 표시
+            this.showSettingsPanel();
 
         } catch (error) {
             console.error('카테고리 설정 로드 실패:', error);
@@ -974,6 +977,32 @@ class RAGManager {
     }
 
     /**
+     * 설정 패널 표시
+     */
+    showSettingsPanel() {
+        const fileManagerArea = document.getElementById('fileManagerArea');
+        const settingsPanel = document.getElementById('settingsPanel');
+        
+        if (fileManagerArea && settingsPanel) {
+            fileManagerArea.style.display = 'none';
+            settingsPanel.style.display = 'flex';
+        }
+    }
+
+    /**
+     * 설정 패널 숨김
+     */
+    hideSettingsPanel() {
+        const fileManagerArea = document.getElementById('fileManagerArea');
+        const settingsPanel = document.getElementById('settingsPanel');
+        
+        if (fileManagerArea && settingsPanel) {
+            settingsPanel.style.display = 'none';
+            fileManagerArea.style.display = 'flex';
+        }
+    }
+
+    /**
      * 카테고리 설정 저장
      */
     async saveCategorySettings() {
@@ -1018,7 +1047,7 @@ class RAGManager {
 
             if (result.success) {
                 alert(result.message);
-                document.getElementById('settingsModal').style.display = 'none';
+                this.hideSettingsPanel();
                 
                 // 카테고리 목록 새로고침
                 this.loadCategories();
