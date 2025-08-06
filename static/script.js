@@ -9,7 +9,7 @@ class RAGManager {
         this.init();
         this.loadDocuments();
         this.loadCategories();
-        this.loadWeatherData();
+        // this.loadWeatherData(); 사용하지 않는 함수(계절 정보)
     }
 
     init() {
