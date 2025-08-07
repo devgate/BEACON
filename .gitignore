@@ -172,3 +172,9 @@ Thumbs.db
 uploads/
 # PDF에서 추출된 이미지들 (용량이 크므로 제외)
 static/images/
+
+# Terraform
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
