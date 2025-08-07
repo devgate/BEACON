@@ -178,3 +178,8 @@ infra/terraform/.terraform/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+
+# Vite (Frontend Build Tool)
+.vite/
+dist/
+node_modules/
