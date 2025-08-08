@@ -186,6 +186,9 @@ backend/static/images/*
 .terraform/
 .terraform.lock.hcl
 
+# Terraform provider binaries (large files)
+**/.terraform/providers/*/
+
 # Variable files that may contain secrets
 *.tfvars
 !infra/terraform/environments/*.tfvars
