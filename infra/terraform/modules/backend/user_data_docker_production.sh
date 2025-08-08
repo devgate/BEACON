@@ -41,9 +41,20 @@ echo "Docker version: $(docker --version)"
 echo "=== MEMORY BEFORE DOCKER PULL ==="
 free -h
 
-# Pull BEACON backend Docker image from Docker Hub
-echo "Pulling BEACON backend Docker image from Docker Hub..."
-docker pull sksda4614/beacon-backend:latest
+# Install AWS CLI v2 for ECR authentication
+echo "Installing AWS CLI v2..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+rm -rf awscliv2.zip aws/
+
+# Login to AWS ECR
+echo "Logging into AWS ECR..."
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com
+
+# Pull BEACON backend Docker image from AWS ECR
+echo "Pulling BEACON backend Docker image from AWS ECR..."
+docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest
 echo "BEACON backend image pulled successfully"
 
 # Check memory after pull
@@ -63,7 +74,7 @@ docker run -d \
   --name beacon-backend \
   --restart unless-stopped \
   -p 80:5000 \
-  sksda4614/beacon-backend:latest
+  933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest
 
 echo "Backend container start exit code: $?"
 
@@ -90,7 +101,7 @@ for attempt in {1..5}; do
       --name beacon-backend \
       --restart unless-stopped \
       -p 80:5000 \
-      sksda4614/beacon-backend:latest
+      933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest
     
     sleep 15
   fi

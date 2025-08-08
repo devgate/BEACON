@@ -41,9 +41,20 @@ echo "Docker version: $(docker --version)"
 echo "=== MEMORY BEFORE DOCKER PULL ==="
 free -h
 
-# Pull BEACON frontend Docker image from Docker Hub
-echo "Pulling BEACON frontend Docker image from Docker Hub..."
-docker pull sksda4614/beacon-frontend:latest
+# Install AWS CLI v2 for ECR authentication
+echo "Installing AWS CLI v2..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+rm -rf awscliv2.zip aws/
+
+# Login to AWS ECR
+echo "Logging into AWS ECR..."
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com
+
+# Pull BEACON frontend Docker image from AWS ECR
+echo "Pulling BEACON frontend Docker image from AWS ECR..."
+docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
 echo "BEACON frontend image pulled successfully"
 
 # Check memory after pull
@@ -67,7 +78,7 @@ docker run -d \
   -e BACKEND_HOST=api.beacon.sk-shieldus.com \
   -e BACKEND_PORT=443 \
   -e BACKEND_PROTOCOL=https \
-  sksda4614/beacon-frontend:latest
+  933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
 
 # Wait for container to start
 sleep 10
@@ -95,7 +106,7 @@ for attempt in {1..5}; do
       -e BACKEND_HOST=api.beacon.sk-shieldus.com \
       -e BACKEND_PORT=443 \
       -e BACKEND_PROTOCOL=https \
-      sksda4614/beacon-frontend:latest
+      933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
     
     sleep 10
   fi
