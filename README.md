@@ -35,26 +35,41 @@ Application Load Balancer (HTTPS)
               └───────────────────────┘
 ```
 
-### 로컬 개발
+### 로컬 개발 환경
 ```
-Docker Compose
-├── beacon-frontend:3000 (React Dev Server)
-└── beacon-backend:5001 (Flask API + Mock AI)
+Docker Compose (deploy/dev/local/)
+├── beacon-frontend:3000 (React + Nginx)
+└── beacon-backend:5000 (Flask + AWS Bedrock)
+    └── AWS Services
+        ├── Bedrock (Claude AI)
+        └── DynamoDB (dev tables)
 ```
 
 ## 🚀 빠른 시작 가이드
 
-### 1. 로컬 개발 환경
+### 1. 로컬 개발 환경 (초간단 시작)
 
 ```bash
-# 전체 스택 로컬 테스트 (dev 디렉터리에서)
-cd deploy/dev
-docker-compose -f docker-compose.test.yml up --build
+# 한 번에 모든 설정 + 실행
+cd deploy/dev/local
+./deploy.sh start
 
-# 접속 확인
+# 스크립트가 자동으로 처리:
+# ✅ AWS 자격증명 감지/입력
+# ✅ .env 파일 생성
+# ✅ DynamoDB 연결
+# ✅ Bedrock AI 연결
+# ✅ Docker 컨테이너 시작
+
+# 접속 정보:
 # Frontend: http://localhost:3000
-# Backend API: http://localhost:5001/api/weather
+# Backend API: http://localhost:5000
+# Health Check: http://localhost:3000/health
 ```
+
+**AWS 자격증명이 없는 경우** 자동으로 입력받습니다:
+- 필요 권한: `AmazonBedrockFullAccess`, `DynamoDBFullAccess`
+- 컨테이너 준비시간: 30초-1분 (502 오류 정상)
 
 ### 2. Docker 이미지 빌드
 
@@ -103,7 +118,7 @@ cd deploy/prd
 ## 📁 프로젝트 구조
 
 ```
-terraform-test/
+BEACON/
 ├── frontend/                    # React 프론트엔드
 │   ├── src/                    # React 소스 코드
 │   ├── public/                 # 정적 파일
@@ -122,17 +137,26 @@ terraform-test/
 │   ├── requirements.txt       # Python 의존성
 │   └── build.sh              # Docker 빌드 스크립트
 ├── infra/                     # AWS 인프라
-│   └── terraform/             # Terraform IaC
-│       ├── main.tf           # 메인 설정 파일
-│       ├── variables.tf      # 환경 변수 정의
-│       ├── outputs.tf        # 출력 정보
-│       ├── terraform.tfvars  # 환경 설정 값
-│       └── modules/          # 모듈화된 인프라
-│           ├── common/       # VPC, DNS, SSL 인증서
-│           ├── frontend/     # Frontend ALB, EC2, 보안그룹
-│           └── backend/      # Backend ALB, EC2, 보안그룹
+│   ├── terraform/             # 운영 환경 Terraform IaC
+│   │   ├── main.tf           # 메인 설정 파일
+│   │   ├── variables.tf      # 환경 변수 정의
+│   │   ├── outputs.tf        # 출력 정보
+│   │   ├── terraform.tfvars  # 환경 설정 값
+│   │   └── modules/          # 모듈화된 인프라
+│   │       ├── common/       # VPC, DNS, SSL 인증서
+│   │       ├── frontend/     # Frontend ALB, EC2, 보안그룹
+│   │       └── backend/      # Backend ALB, EC2, 보안그룹
+│   └── terraform-dev/         # 개발 환경 DynamoDB 테이블
+│       ├── main.tf           # dev 테이블 정의
+│       ├── backend.tf        # S3 백엔드 설정 (팀 협업)
+│       └── variables.tf      # 개발환경 변수
 └── deploy/                    # 배포 자동화
     ├── dev/                  # 개발 환경
+    │   └── local/           # 로컬 Docker Compose 환경
+    │       ├── deploy.sh    # 스마트 배포 스크립트 (AWS 자동설정)
+    │       ├── docker-compose.yml # 서비스 정의
+    │       ├── .env.example # 환경변수 템플릿
+    │       └── README.md    # 로컬 개발 가이드
     └── prd/                  # 운영 환경
         ├── deploy-full.sh    # 전체 스택 배포
         ├── deploy-frontend.sh # 프론트엔드 배포  
@@ -305,9 +329,9 @@ curl -k https://beacon.sk-shieldus.com/api/categories
 ### 일반적인 문제들
 
 1. **502 Bad Gateway 에러 (로컬 환경)**
-   - 원인: nginx에서 HTTPS로 백엔드 연결 시도하나 로컬은 HTTP 필요
-   - 해결: `BACKEND_PROTOCOL=http` 환경 변수 설정됨 (자동 해결)
-   - 확인: `docker logs beacon-frontend` 로그에서 HTTP 연결 확인
+   - 원인: 컨테이너가 아직 준비중 (정상 현상)
+   - 해결: 30초-1분 대기 후 재접속
+   - 확인: `./deploy.sh status` 또는 `./deploy.sh logs`로 상태 모니터링
 
 2. **카테고리가 하나만 표시되는 경우**
    - nginx 프록시 설정 확인: `default.conf.template`
@@ -337,6 +361,7 @@ curl -k https://beacon.sk-shieldus.com/api/categories
 ## 📚 추가 리소스
 
 ### 관련 문서
+- **[deploy/dev/local/README.md](./deploy/dev/local/README.md)**: 🚀 **로컬 개발환경 설정 가이드 (필수)**
 - **[infra/README.md](./infra/README.md)**: Terraform 인프라 상세 가이드
 - **[frontend/README.md](./frontend/README.md)**: React 프론트엔드 개발 가이드  
 - **[backend/README.md](./backend/README.md)**: Flask API 백엔드 가이드

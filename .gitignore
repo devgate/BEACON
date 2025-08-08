@@ -168,16 +168,50 @@ Thumbs.db
 # End of https://www.toptal.com/developers/gitignore/api/python
 
 # BEACON 프로젝트 특정 파일들 
-# 업로드된 PDF 파일들 (용량이 크므로 제외)
-uploads/
-# PDF에서 추출된 이미지들 (용량이 크므로 제외)
-static/images/
+# 업로드된 PDF 파일들 (용량이 크므로 제외, 디렉토리 구조는 유지)
+backend/uploads/*
+!backend/uploads/.gitkeep
+# PDF에서 추출된 이미지들 (용량이 크므로 제외, 디렉토리 구조는 유지)
+backend/static/images/*
+!backend/static/images/.gitkeep
 
 # Terraform
-infra/terraform/.terraform/
+# State files
 *.tfstate
 *.tfstate.*
+*.tfstate.backup
+*.tfstate.*.backup
+
+# Terraform directories
+.terraform/
 .terraform.lock.hcl
+
+# Variable files that may contain secrets
+*.tfvars
+!infra/terraform/environments/*.tfvars
+!infra/terraform-dev/terraform.tfvars
+*.tfvars.json
+
+# Override files (personal configurations)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform CLI config files
+.terraformrc
+terraform.rc
+
+# Terraform plan files
+*.tfplan
+*.tfplan.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Example files should be included
+!*.tfvars.example
 
 # Vite (Frontend Build Tool)
 .vite/
