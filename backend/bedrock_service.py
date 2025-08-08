@@ -138,6 +138,11 @@ class BedrockService:
         Returns:
             Boolean indicating if access is granted
         """
+        # Skip Nova models as they require inference profiles
+        if "nova" in model_id.lower():
+            logger.debug(f"Skipping Nova model {model_id} - requires inference profile")
+            return False
+            
         try:
             # Try to get model details - this will fail if no access
             response = self.bedrock_client.get_foundation_model(
@@ -163,6 +168,36 @@ class BedrockService:
         # Common cross-region inference profile IDs
         # These allow accessing models from other regions
         cross_region_profiles = [
+            {
+                "profile_id": "us.amazon.nova-lite-v1:0", 
+                "base_model": "amazon.nova-lite-v1:0",
+                "name": "Amazon Nova Lite (Cross-Region)",
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 300000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.00006, "output": 0.00024}
+            },
+            {
+                "profile_id": "us.amazon.nova-micro-v1:0",
+                "base_model": "amazon.nova-micro-v1:0", 
+                "name": "Amazon Nova Micro (Cross-Region)",
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 128000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.000035, "output": 0.00014}
+            },
+            {
+                "profile_id": "us.amazon.nova-pro-v1:0",
+                "base_model": "amazon.nova-pro-v1:0",
+                "name": "Amazon Nova Pro (Cross-Region)", 
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 300000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.0008, "output": 0.0032}
+            },
             {
                 "profile_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
                 "base_model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
@@ -194,6 +229,36 @@ class BedrockService:
                 "pricing": {"input": 0.015, "output": 0.075}
             },
             {
+                "profile_id": "us.amazon.nova-lite-v1:0", 
+                "base_model": "amazon.nova-lite-v1:0",
+                "name": "Amazon Nova Lite (US Cross-Region)",
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 300000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.00006, "output": 0.00024}
+            },
+            {
+                "profile_id": "us.amazon.nova-micro-v1:0",
+                "base_model": "amazon.nova-micro-v1:0", 
+                "name": "Amazon Nova Micro (US Cross-Region)",
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 128000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.000035, "output": 0.00014}
+            },
+            {
+                "profile_id": "us.amazon.nova-pro-v1:0",
+                "base_model": "amazon.nova-pro-v1:0",
+                "name": "Amazon Nova Pro (US Cross-Region)", 
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 300000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.0008, "output": 0.0032}
+            },
+            {
                 "profile_id": "us.meta.llama3-2-90b-instruct-v1:0",
                 "base_model": "meta.llama3-2-90b-instruct-v1:0",
                 "name": "Llama 3.2 90B (US Cross-Region)",
@@ -215,49 +280,24 @@ class BedrockService:
             }
         ]
         
-        # Check access to each inference profile
+        # Add inference profiles without testing (for development)
         for profile in cross_region_profiles:
-            try:
-                # Test if we can access this inference profile
-                # by attempting to get the base model through the profile
-                response = self.bedrock_runtime.invoke_model(
-                    modelId=profile["profile_id"],
-                    contentType='application/json',
-                    accept='application/json',
-                    body=json.dumps({
-                        "anthropic_version": "bedrock-2023-05-31",
-                        "messages": [{"role": "user", "content": "test"}],
-                        "max_tokens": 1
-                    }) if profile["provider"] == ModelProvider.ANTHROPIC else json.dumps({
-                        "prompt": "test",
-                        "max_gen_len": 1
-                    })
-                )
-                
-                # If successful, add to available profiles
-                inference_profiles.append(BedrockModel(
-                    model_id=profile["profile_id"],
-                    provider=profile["provider"],
-                    name=profile["name"],
-                    description=f"Cross-region inference profile for {profile['base_model']}",
-                    input_modalities=["TEXT"],
-                    output_modalities=["TEXT"],
-                    max_tokens=profile["max_tokens"],
-                    supports_streaming=profile["supports_streaming"],
-                    supports_system_prompt=profile["supports_system_prompt"],
-                    cost_per_1k_input_tokens=profile["pricing"]["input"],
-                    cost_per_1k_output_tokens=profile["pricing"]["output"],
-                    status="ACTIVE"
-                ))
-                logger.info(f"Cross-region inference profile available: {profile['profile_id']}")
-                
-            except ClientError as e:
-                # Profile not accessible, skip it
-                logger.debug(f"No access to inference profile {profile['profile_id']}: {e}")
-                continue
-            except Exception as e:
-                logger.warning(f"Error checking inference profile {profile['profile_id']}: {e}")
-                continue
+            # Add all profiles - testing will happen when they're actually used
+            inference_profiles.append(BedrockModel(
+                model_id=profile["profile_id"],
+                provider=profile["provider"],
+                name=profile["name"],
+                description=f"Cross-region inference profile for {profile.get('base_model', profile['profile_id'])}",
+                input_modalities=["TEXT"],
+                output_modalities=["TEXT"],
+                max_tokens=profile["max_tokens"],
+                supports_streaming=profile["supports_streaming"],
+                supports_system_prompt=profile["supports_system_prompt"],
+                cost_per_1k_input_tokens=profile["pricing"]["input"],
+                cost_per_1k_output_tokens=profile["pricing"]["output"],
+                status="ACTIVE"
+            ))
+            logger.info(f"Added inference profile: {profile['profile_id']}")
         
         return inference_profiles
     
@@ -365,7 +405,7 @@ class BedrockService:
     
     def get_model_by_id(self, model_id: str) -> Optional[BedrockModel]:
         """
-        Get a specific model by ID
+        Get a specific model by ID, including inference profiles
         
         Args:
             model_id: The model identifier
@@ -373,9 +413,24 @@ class BedrockService:
         Returns:
             BedrockModel instance or None
         """
+        # First check regular available models
         for model in self.available_models:
             if model.model_id == model_id or model.model_id.startswith(model_id):
                 return model
+        
+        # Then check inference profiles - important for Nova models in ap-northeast-2
+        inference_profiles = self._get_inference_profiles()
+        for model in inference_profiles:
+            if model.model_id == model_id or model.model_id.startswith(model_id):
+                return model
+        
+        # Special handling for Nova models - map base model ID to inference profile
+        if model_id.startswith('amazon.nova-'):
+            profile_id = f"us.{model_id}"
+            for model in inference_profiles:
+                if model.model_id == profile_id:
+                    return model
+        
         return None
     
     def invoke_model(self, 
@@ -504,18 +559,36 @@ class BedrockService:
                 request["stop_sequences"] = stop_sequences
                 
         elif model.provider == ModelProvider.AMAZON:
-            # Amazon Titan format
-            request = {
-                "inputText": prompt,
-                "textGenerationConfig": {
-                    "maxTokenCount": max_tokens,
-                    "temperature": temperature,
-                    "topP": top_p
+            # Check if this is a Nova model (uses different format)
+            if "nova" in model.model_id.lower():
+                # Amazon Nova format (similar to Anthropic)
+                request = {
+                    "messages": [{"role": "user", "content": [{"text": prompt}]}],
+                    "inferenceConfig": {
+                        "maxTokens": max_tokens,
+                        "temperature": temperature,
+                        "topP": top_p
+                    }
                 }
-            }
-            
-            if stop_sequences:
-                request["textGenerationConfig"]["stopSequences"] = stop_sequences
+                
+                if system_prompt and model.supports_system_prompt:
+                    request["system"] = [{"text": system_prompt}]
+                    
+                if stop_sequences:
+                    request["inferenceConfig"]["stopSequences"] = stop_sequences
+            else:
+                # Amazon Titan format
+                request = {
+                    "inputText": prompt,
+                    "textGenerationConfig": {
+                        "maxTokenCount": max_tokens,
+                        "temperature": temperature,
+                        "topP": top_p
+                    }
+                }
+                
+                if stop_sequences:
+                    request["textGenerationConfig"]["stopSequences"] = stop_sequences
                 
         elif model.provider == ModelProvider.META:
             # Meta Llama format
@@ -578,17 +651,32 @@ class BedrockService:
             result["stop_reason"] = response_body.get("stop_reason")
             
         elif model.provider == ModelProvider.AMAZON:
-            # Amazon Titan response format
-            results = response_body.get("results", [])
-            if results:
-                result["text"] = results[0].get("outputText", "")
-                result["usage"] = {
-                    "input_tokens": results[0].get("tokenCount", 0),
-                    "output_tokens": results[0].get("completionTokenCount", 0)
-                }
+            # Check if this is a Nova model (different response format)
+            if "nova" in model.model_id.lower():
+                # Amazon Nova response format
+                output = response_body.get("output", {})
+                message = output.get("message", {})
+                content = message.get("content", [])
+                
+                if content and isinstance(content, list):
+                    result["text"] = content[0].get("text", "")
+                else:
+                    result["text"] = ""
+                
+                result["usage"] = response_body.get("usage", {})
+                result["stop_reason"] = response_body.get("stopReason")
             else:
-                result["text"] = ""
-                result["usage"] = {}
+                # Amazon Titan response format
+                results = response_body.get("results", [])
+                if results:
+                    result["text"] = results[0].get("outputText", "")
+                    result["usage"] = {
+                        "input_tokens": results[0].get("tokenCount", 0),
+                        "output_tokens": results[0].get("completionTokenCount", 0)
+                    }
+                else:
+                    result["text"] = ""
+                    result["usage"] = {}
                 
         elif model.provider == ModelProvider.META:
             # Meta Llama response format
@@ -679,20 +767,39 @@ class BedrockService:
         Returns:
             List of embedding values
         """
-        try:
-            response = self.bedrock_runtime.invoke_model(
-                modelId=model_id,
-                contentType='application/json',
-                accept='application/json',
-                body=json.dumps({"inputText": text})
-            )
-            
-            result = json.loads(response['body'].read())
-            return result.get('embedding', [])
-            
-        except ClientError as e:
-            logger.error(f"Error generating embedding: {e}")
-            raise
+        # Try different embedding models in order of preference
+        embedding_models = [
+            "amazon.titan-embed-text-v1",
+            "amazon.titan-embed-text-v2:0", 
+            "cohere.embed-multilingual-v3",
+            "cohere.embed-english-v3"
+        ]
+        
+        # Start with the requested model, then try alternatives
+        models_to_try = [model_id] + [m for m in embedding_models if m != model_id]
+        
+        for current_model in models_to_try:
+            try:
+                response = self.bedrock_runtime.invoke_model(
+                    modelId=current_model,
+                    contentType='application/json',
+                    accept='application/json',
+                    body=json.dumps({"inputText": text})
+                )
+                
+                result = json.loads(response['body'].read())
+                embedding = result.get('embedding', [])
+                if embedding:
+                    logger.debug(f"Successfully generated embedding using {current_model}")
+                    return embedding
+                    
+            except ClientError as e:
+                logger.debug(f"Embedding model {current_model} failed: {e}")
+                continue
+        
+        # If all models fail, log error and raise exception
+        logger.error(f"All embedding models failed for region {self.region}")
+        raise Exception(f"No embedding models available in region {self.region}")
 
 
 # Utility functions for Flask integration
