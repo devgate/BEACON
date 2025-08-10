@@ -1,82 +1,168 @@
-# Beacon API 레퍼런스 & 프론트엔드 가이드
+# BEACON Backend API Reference
 
-## 🌐 API 엔드포인트
+## 📋 Overview
 
-### 기본 URL
-- **운영환경**: `https://api.beacon.sk-shieldus.com`
-- **개발환경**: `https://dev-api.beacon.sk-shieldus.com`
+BEACON Backend는 Flask 기반의 RAG(Retrieval-Augmented Generation) API 서버입니다. AWS Bedrock과 DynamoDB를 활용하여 PDF 문서 기반의 지능형 질의응답 시스템을 제공합니다.
+
+**Base URL**: `http://localhost:5000` (개발) / `https://api.beacon.sk-shieldus.com` (운영)
 
 ### 인증
 - **타입**: 없음 (데모용 공개 API)
-- **CORS**: 크로스 오리진 요청 허용
-- **프로토콜**: HTTPS만 허용
+- **CORS**: `http://localhost:3000`, `http://localhost:8080` 허용
+- **최대 파일 크기**: 16MB
+- **지원 파일 형식**: PDF만
 
----
+## 🔗 Core API Endpoints
 
-## 📡 백엔드 API 엔드포인트
+### 1. 채팅 API
 
-### 날씨 정보 API (헬스체크)
-```http
-GET /api/weather
-```
+#### `POST /api/chat`
+RAG 기반 AI 채팅 API
 
-**목적**: 시스템 헬스체크 및 로드밸런서 상태 확인
-
-**응답 예시**:
+**Request Body:**
 ```json
 {
-  "temperature": "3°C",
-  "location": "안양시 동구",
-  "condition": "흐림",
-  "range": "5°C/-1°C"
+  "message": "사용자 질문",
+  "category_id": 1,
+  "model_id": "anthropic.claude-3-sonnet",
+  "settings": {
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "use_rag": true,
+    "top_k_documents": 5
+  }
 }
 ```
 
-**응답 코드**:
-- `200 OK`: 서비스 정상
-- `503 Service Unavailable`: 서비스 이상
-
----
-
-### 문서 목록 조회
-```http
-GET /api/documents
+**Response:**
+```json
+{
+  "response": "AI 응답 텍스트",
+  "model_used": "anthropic.claude-3-sonnet",
+  "timestamp": "2025-01-15T10:30:00",
+  "tokens_used": {
+    "input_tokens": 150,
+    "output_tokens": 200
+  },
+  "cost_estimate": {
+    "input_cost": 0.00045,
+    "output_cost": 0.003,
+    "total": 0.00345
+  },
+  "confidence_score": 0.92,
+  "processing_time": 1.8,
+  "images": [
+    {
+      "page": 1,
+      "url": "/static/images/doc_1/page_1.png",
+      "filename": "page_1.png"
+    }
+  ],
+  "referenced_docs": [
+    {
+      "id": "1",
+      "title": "document.pdf",
+      "has_file": true,
+      "relevance_score": 0.85
+    }
+  ],
+  "rag_enabled": true
+}
 ```
 
-**목적**: 업로드된 모든 문서 목록 반환
+**Features:**
+- **RAG 모드**: 업로드된 문서 기반 답변
+- **일반 대화 모드**: 문서 없이 Bedrock 모델 사용
+- **Fallback 모드**: Bedrock 미사용 시 Mock 응답
+- **비용 추적**: 실시간 토큰 사용량 및 비용 계산
+- **신뢰도 점수**: 응답 관련성 0.0-1.0
 
-**응답 예시**:
+### 2. 문서 관리 API
+
+#### `POST /api/upload`
+PDF 파일 업로드 및 RAG 처리
+
+**Request (multipart/form-data):**
+```
+file: [PDF 파일]
+category_id: 1 (optional, default: 4)
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "파일이 성공적으로 업로드되었습니다.",
+  "document": {
+    "id": 1,
+    "title": "document.pdf",
+    "preview": "문서 내용 미리보기..."
+  },
+  "rag_enabled": true,
+  "processing": {
+    "chunks_created": 15,
+    "embeddings_generated": 15,
+    "processing_time": 3.2,
+    "total_tokens": 2800
+  }
+}
+```
+
+**Processing:**
+1. **텍스트 추출**: PyPDF2로 PDF 텍스트 파싱
+2. **이미지 추출**: pdf2image로 페이지별 PNG 생성 (150 DPI)
+3. **문서 청킹**: 카테고리별 최적화된 전략 적용
+4. **임베딩 생성**: AWS Bedrock Titan Embeddings
+5. **벡터 저장**: DynamoDB 벡터 스토어에 저장
+
+#### `GET /api/documents`
+전체 문서 목록 조회
+
+**Response:**
 ```json
 [
   {
     "id": 1,
-    "title": "sample.pdf",
-    "content": "추출된 PDF 텍스트 내용...",
+    "title": "document.pdf",
+    "content": "문서 전체 텍스트...",
     "type": "uploaded",
-    "category_id": 4,
-    "images": [
-      {
-        "page": 1,
-        "filename": "page_1.png",
-        "url": "/static/images/doc_1/page_1.png"
-      }
-    ]
+    "category_id": 1,
+    "file_path": "uploads/doc_1_document.pdf",
+    "original_filename": "document.pdf",
+    "images": [...]
   }
 ]
 ```
 
----
+#### `DELETE /api/documents/{doc_id}`
+문서 삭제
 
-### 카테고리 관리
-```http
-GET /api/categories
-POST /api/categories
+**Response:**
+```json
+{
+  "success": true,
+  "message": "문서가 삭제되었습니다.",
+  "rag_chunks_deleted": 15
+}
 ```
 
-#### GET /api/categories
-**목적**: 문서 카테고리 목록 조회
+**Actions:**
+- 파일 시스템에서 PDF 파일 삭제
+- 추출된 이미지 디렉토리 삭제
+- DynamoDB에서 벡터 데이터 삭제
+- 메모리에서 문서 메타데이터 제거
 
-**응답 예시**:
+#### `GET /api/download/{doc_id}`
+PDF 파일 다운로드
+
+**Response:** PDF 파일 스트림
+
+### 3. 카테고리 관리 API
+
+#### `GET /api/categories`
+카테고리 목록 조회 (문서 개수 포함)
+
+**Response:**
 ```json
 [
   {
@@ -85,7 +171,7 @@ POST /api/categories
     "description": "재무 관련 문서",
     "icon": "fas fa-calculator",
     "color": "#10B981",
-    "document_count": 3,
+    "document_count": 5,
     "settings": {
       "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
       "chunk_size": 512,
@@ -96,24 +182,34 @@ POST /api/categories
 ]
 ```
 
-#### POST /api/categories
-**목적**: 새 카테고리 생성
+#### `GET /api/categories/{category_id}/documents`
+특정 카테고리의 문서 목록
 
-**요청 본문**:
+#### `POST /api/categories`
+새 카테고리 생성
+
+**Request:**
 ```json
 {
-  "name": "신규 카테고리",
+  "name": "새 카테고리",
   "description": "카테고리 설명",
   "icon": "fas fa-folder",
   "color": "#6B7280"
 }
 ```
 
-**응답 코드**:
-- `200 OK`: 카테고리 생성 성공
-- `400 Bad Request`: 잘못된 요청 데이터
+#### `PUT /api/categories/{category_id}/settings`
+카테고리별 RAG 설정 업데이트
 
----
+**Request:**
+```json
+{
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "chunk_size": 1024,
+  "chunk_overlap": 100,
+  "chunk_strategy": "section"
+}
+```
 
 ### AI 채팅
 ```http

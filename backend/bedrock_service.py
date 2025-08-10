@@ -138,11 +138,6 @@ class BedrockService:
         Returns:
             Boolean indicating if access is granted
         """
-        # Skip Nova models as they require inference profiles
-        if "nova" in model_id.lower():
-            logger.debug(f"Skipping Nova model {model_id} - requires inference profile")
-            return False
-            
         try:
             # Try to get model details - this will fail if no access
             response = self.bedrock_client.get_foundation_model(
@@ -165,43 +160,22 @@ class BedrockService:
         """
         inference_profiles = []
         
-        # Common cross-region inference profile IDs
-        # These allow accessing models from other regions
-        cross_region_profiles = [
+        # APAC inference profiles (system-defined profiles available in ap-northeast-2)
+        apac_inference_profiles = [
             {
-                "profile_id": "us.amazon.nova-lite-v1:0", 
-                "base_model": "amazon.nova-lite-v1:0",
-                "name": "Amazon Nova Lite (Cross-Region)",
-                "provider": ModelProvider.AMAZON,
-                "max_tokens": 300000,
+                "profile_id": "apac.anthropic.claude-3-sonnet-20240229-v1:0",
+                "base_model": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "name": "Claude 3 Sonnet (APAC)",
+                "provider": ModelProvider.ANTHROPIC,
+                "max_tokens": 4096,
                 "supports_streaming": True,
                 "supports_system_prompt": True,
-                "pricing": {"input": 0.00006, "output": 0.00024}
+                "pricing": {"input": 0.003, "output": 0.015}
             },
             {
-                "profile_id": "us.amazon.nova-micro-v1:0",
-                "base_model": "amazon.nova-micro-v1:0", 
-                "name": "Amazon Nova Micro (Cross-Region)",
-                "provider": ModelProvider.AMAZON,
-                "max_tokens": 128000,
-                "supports_streaming": True,
-                "supports_system_prompt": True,
-                "pricing": {"input": 0.000035, "output": 0.00014}
-            },
-            {
-                "profile_id": "us.amazon.nova-pro-v1:0",
-                "base_model": "amazon.nova-pro-v1:0",
-                "name": "Amazon Nova Pro (Cross-Region)", 
-                "provider": ModelProvider.AMAZON,
-                "max_tokens": 300000,
-                "supports_streaming": True,
-                "supports_system_prompt": True,
-                "pricing": {"input": 0.0008, "output": 0.0032}
-            },
-            {
-                "profile_id": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                "base_model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-                "name": "Claude 3.5 Sonnet (US Cross-Region)",
+                "profile_id": "apac.anthropic.claude-3-5-sonnet-20240620-v1:0",
+                "base_model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+                "name": "Claude 3.5 Sonnet (APAC)",
                 "provider": ModelProvider.ANTHROPIC,
                 "max_tokens": 8192,
                 "supports_streaming": True,
@@ -209,39 +183,39 @@ class BedrockService:
                 "pricing": {"input": 0.003, "output": 0.015}
             },
             {
-                "profile_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-                "base_model": "anthropic.claude-3-5-haiku-20241022-v1:0",
-                "name": "Claude 3.5 Haiku (US Cross-Region)",
-                "provider": ModelProvider.ANTHROPIC,
-                "max_tokens": 8192,
-                "supports_streaming": True,
-                "supports_system_prompt": True,
-                "pricing": {"input": 0.001, "output": 0.005}
-            },
-            {
-                "profile_id": "us.anthropic.claude-3-opus-20240229-v1:0",
-                "base_model": "anthropic.claude-3-opus-20240229-v1:0",
-                "name": "Claude 3 Opus (US Cross-Region)",
+                "profile_id": "apac.anthropic.claude-3-haiku-20240307-v1:0",
+                "base_model": "anthropic.claude-3-haiku-20240307-v1:0",
+                "name": "Claude 3 Haiku (APAC)",
                 "provider": ModelProvider.ANTHROPIC,
                 "max_tokens": 4096,
                 "supports_streaming": True,
                 "supports_system_prompt": True,
-                "pricing": {"input": 0.015, "output": 0.075}
+                "pricing": {"input": 0.00025, "output": 0.00125}
             },
             {
-                "profile_id": "us.amazon.nova-lite-v1:0", 
-                "base_model": "amazon.nova-lite-v1:0",
-                "name": "Amazon Nova Lite (US Cross-Region)",
-                "provider": ModelProvider.AMAZON,
-                "max_tokens": 300000,
+                "profile_id": "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "base_model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "name": "Claude 3.5 Sonnet v2 (APAC)",
+                "provider": ModelProvider.ANTHROPIC,
+                "max_tokens": 8192,
                 "supports_streaming": True,
                 "supports_system_prompt": True,
-                "pricing": {"input": 0.00006, "output": 0.00024}
+                "pricing": {"input": 0.003, "output": 0.015}
             },
             {
-                "profile_id": "us.amazon.nova-micro-v1:0",
-                "base_model": "amazon.nova-micro-v1:0", 
-                "name": "Amazon Nova Micro (US Cross-Region)",
+                "profile_id": "apac.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                "base_model": "anthropic.claude-3-7-sonnet-20250219-v1:0",
+                "name": "Claude 3.7 Sonnet (APAC)",
+                "provider": ModelProvider.ANTHROPIC,
+                "max_tokens": 8192,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.003, "output": 0.015}
+            },
+            {
+                "profile_id": "apac.amazon.nova-micro-v1:0",
+                "base_model": "amazon.nova-micro-v1:0",
+                "name": "Amazon Nova Micro (APAC)",
                 "provider": ModelProvider.AMAZON,
                 "max_tokens": 128000,
                 "supports_streaming": True,
@@ -249,9 +223,19 @@ class BedrockService:
                 "pricing": {"input": 0.000035, "output": 0.00014}
             },
             {
-                "profile_id": "us.amazon.nova-pro-v1:0",
+                "profile_id": "apac.amazon.nova-lite-v1:0",
+                "base_model": "amazon.nova-lite-v1:0",
+                "name": "Amazon Nova Lite (APAC)",
+                "provider": ModelProvider.AMAZON,
+                "max_tokens": 300000,
+                "supports_streaming": True,
+                "supports_system_prompt": True,
+                "pricing": {"input": 0.00006, "output": 0.00024}
+            },
+            {
+                "profile_id": "apac.amazon.nova-pro-v1:0",
                 "base_model": "amazon.nova-pro-v1:0",
-                "name": "Amazon Nova Pro (US Cross-Region)", 
+                "name": "Amazon Nova Pro (APAC)",
                 "provider": ModelProvider.AMAZON,
                 "max_tokens": 300000,
                 "supports_streaming": True,
@@ -259,19 +243,9 @@ class BedrockService:
                 "pricing": {"input": 0.0008, "output": 0.0032}
             },
             {
-                "profile_id": "us.meta.llama3-2-90b-instruct-v1:0",
-                "base_model": "meta.llama3-2-90b-instruct-v1:0",
-                "name": "Llama 3.2 90B (US Cross-Region)",
-                "provider": ModelProvider.META,
-                "max_tokens": 2048,
-                "supports_streaming": True,
-                "supports_system_prompt": False,
-                "pricing": {"input": 0.002, "output": 0.002}
-            },
-            {
-                "profile_id": "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                "base_model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-                "name": "Claude 3.5 Sonnet (EU Cross-Region)",
+                "profile_id": "apac.anthropic.claude-sonnet-4-20250514-v1:0",
+                "base_model": "anthropic.claude-sonnet-4-20250514-v1:0",
+                "name": "Claude Sonnet 4 (APAC)",
                 "provider": ModelProvider.ANTHROPIC,
                 "max_tokens": 8192,
                 "supports_streaming": True,
@@ -281,7 +255,7 @@ class BedrockService:
         ]
         
         # Add inference profiles without testing (for development)
-        for profile in cross_region_profiles:
+        for profile in apac_inference_profiles:
             # Add all profiles - testing will happen when they're actually used
             inference_profiles.append(BedrockModel(
                 model_id=profile["profile_id"],
@@ -391,6 +365,14 @@ class BedrockService:
         """
         models = self.available_models.copy()
         
+        # Filter out context length variants that don't have access
+        excluded_models = {
+            "anthropic.claude-3-haiku-20240307-v1:0:200k",
+            "anthropic.claude-3-sonnet-20240229-v1:0:28k", 
+            "anthropic.claude-3-sonnet-20240229-v1:0:200k"
+        }
+        models = [m for m in models if m.model_id not in excluded_models]
+        
         # Add cross-region inference profiles if requested
         if include_inference_profiles:
             models.extend(self._get_inference_profiles())
@@ -413,24 +395,49 @@ class BedrockService:
         Returns:
             BedrockModel instance or None
         """
-        # First check regular available models
+        logger.info(f"get_model_by_id called with: {model_id}")
+        
+        # Model mapping for inference profile requirements - CHECK THIS FIRST!
+        model_mappings = {
+            # Nova models - map to APAC inference profiles
+            "amazon.nova-micro-v1:0": "apac.amazon.nova-micro-v1:0",
+            "amazon.nova-lite-v1:0": "apac.amazon.nova-lite-v1:0",
+            "amazon.nova-pro-v1:0": "apac.amazon.nova-pro-v1:0",
+            
+            # Latest Claude models - map to APAC inference profiles
+            "anthropic.claude-3-5-sonnet-20241022-v2:0": "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "anthropic.claude-3-7-sonnet-20250219-v1:0": "apac.anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "anthropic.claude-sonnet-4-20250514-v1:0": "apac.anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic.claude-3-haiku-20240307-v1:0": "apac.anthropic.claude-3-haiku-20240307-v1:0",
+            "anthropic.claude-3-sonnet-20240229-v1:0": "apac.anthropic.claude-3-sonnet-20240229-v1:0",
+            "anthropic.claude-3-5-sonnet-20240620-v1:0": "apac.anthropic.claude-3-5-sonnet-20240620-v1:0"
+        }
+        
+        # First check if model needs to be mapped to inference profile
+        if model_id in model_mappings:
+            mapped_profile_id = model_mappings[model_id]
+            logger.info(f"Found mapping: {model_id} -> {mapped_profile_id}")
+            inference_profiles = self._get_inference_profiles()
+            for model in inference_profiles:
+                if model.model_id == mapped_profile_id:
+                    logger.info(f"Successfully mapped to profile: {model.model_id}")
+                    return model
+            logger.warning(f"Mapped profile not found: {mapped_profile_id}")
+        
+        # Then check regular available models (for models that don't need mapping)
+        logger.info(f"Checking available models for direct access")
         for model in self.available_models:
             if model.model_id == model_id or model.model_id.startswith(model_id):
+                logger.info(f"Found in available models: {model.model_id}")
                 return model
         
-        # Then check inference profiles - important for Nova models in ap-northeast-2
+        # Finally check inference profiles for direct access
         inference_profiles = self._get_inference_profiles()
         for model in inference_profiles:
             if model.model_id == model_id or model.model_id.startswith(model_id):
                 return model
         
-        # Special handling for Nova models - map base model ID to inference profile
-        if model_id.startswith('amazon.nova-'):
-            profile_id = f"us.{model_id}"
-            for model in inference_profiles:
-                if model.model_id == profile_id:
-                    return model
-        
+        logger.warning(f"Model not found: {model_id}")
         return None
     
     def invoke_model(self, 
@@ -459,6 +466,10 @@ class BedrockService:
         model = self.get_model_by_id(model_id)
         if not model:
             raise ValueError(f"Model {model_id} not available or not accessible")
+        
+        # Log model mapping for debugging
+        if model.model_id != model_id:
+            logger.info(f"Model {model_id} mapped to inference profile: {model.model_id}")
         
         # Format request based on provider
         request_body = self._format_request(
