@@ -48,6 +48,16 @@ output "frontend_alb_dns" {
   value       = var.deploy_frontend ? module.frontend[0].alb_dns_name : "Frontend not deployed"
 }
 
+output "frontend_instance_id" {
+  description = "Frontend EC2 instance ID"
+  value       = var.deploy_frontend ? module.frontend[0].frontend_instance_id : "Frontend not deployed"
+}
+
+output "frontend_instance_public_ip" {
+  description = "Frontend EC2 instance public IP"
+  value       = var.deploy_frontend ? module.frontend[0].frontend_instance_public_ip : "Frontend not deployed"
+}
+
 # Backend outputs (when deployed)
 output "backend_url" {
   description = "Backend API URL"
@@ -57,6 +67,16 @@ output "backend_url" {
 output "backend_alb_dns" {
   description = "Backend ALB DNS name"
   value       = var.deploy_backend ? module.backend[0].alb_dns_name : "Backend not deployed"
+}
+
+output "backend_instance_id" {
+  description = "Backend EC2 instance ID"
+  value       = var.deploy_backend ? module.backend[0].backend_instance_id : "Backend not deployed"
+}
+
+output "backend_instance_public_ip" {
+  description = "Backend EC2 instance public IP"
+  value       = var.deploy_backend ? module.backend[0].backend_instance_public_ip : "Backend not deployed"
 }
 
 # Deployment instructions

@@ -176,14 +176,58 @@ resource "aws_lb_listener" "frontend_http_redirect" {
   }
 }
 
-# Docker Hub를 사용하므로 ECR 관련 IAM 역할은 제거
-# 공개 Docker Hub 이미지를 사용하는 경우 특별한 권한이 필요하지 않음
+# IAM role for Frontend EC2 instance
+resource "aws_iam_role" "frontend_ec2" {
+  name = "${var.environment}-frontend-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${var.environment}-frontend-ec2-role"
+    Environment = var.environment
+  }
+}
+
+# IAM instance profile for EC2
+resource "aws_iam_instance_profile" "frontend_ec2" {
+  name = "${var.environment}-frontend-ec2-profile"
+  role = aws_iam_role.frontend_ec2.name
+}
+
+# Attach basic EC2 policies
+resource "aws_iam_role_policy_attachment" "frontend_ssm" {
+  role       = aws_iam_role.frontend_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy_attachment" "frontend_cloudwatch" {
+  role       = aws_iam_role.frontend_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+# ECR permissions for Docker operations
+resource "aws_iam_role_policy_attachment" "frontend_ecr" {
+  role       = aws_iam_role.frontend_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
 
 # Single Frontend EC2 Instance
 resource "aws_instance" "frontend" {
-  ami           = data.aws_ami.amazon_linux.id
-  instance_type = "t4g.small"  # ARM64 Graviton2 processor
-  key_name      = var.key_pair_name
+  ami                  = data.aws_ami.amazon_linux.id
+  instance_type        = "t4g.small"  # ARM64 Graviton2 processor
+  key_name             = var.key_pair_name
+  iam_instance_profile = aws_iam_instance_profile.frontend_ec2.name
   
   vpc_security_group_ids = [aws_security_group.frontend_ec2.id]
   subnet_id              = var.public_subnet_ids[0]  # Place in public subnet for SSH access

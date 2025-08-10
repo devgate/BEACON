@@ -13,3 +13,13 @@ output "target_group_arn" {
   value       = aws_lb_target_group.frontend.arn
 }
 
+output "frontend_instance_id" {
+  description = "Frontend EC2 instance ID"
+  value       = aws_instance.frontend.id
+}
+
+output "frontend_instance_public_ip" {
+  description = "Frontend EC2 instance public IP"
+  value       = aws_instance.frontend.public_ip
+}
+

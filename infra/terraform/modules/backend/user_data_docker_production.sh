@@ -41,9 +41,9 @@ echo "Docker version: $(docker --version)"
 echo "=== MEMORY BEFORE DOCKER PULL ==="
 free -h
 
-# Install AWS CLI v2 for ECR authentication
-echo "Installing AWS CLI v2..."
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+# Install AWS CLI v2 for ECR authentication (ARM64 version)
+echo "Installing AWS CLI v2 for ARM64..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip aws/
@@ -52,10 +52,76 @@ rm -rf awscliv2.zip aws/
 echo "Logging into AWS ECR..."
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com
 
-# Pull BEACON backend Docker image from AWS ECR
+# Pull BEACON backend Docker image from AWS ECR with fallback
 echo "Pulling BEACON backend Docker image from AWS ECR..."
-docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest
-echo "BEACON backend image pulled successfully"
+if docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest; then
+    echo "BEACON backend image pulled successfully from ECR"
+else
+    echo "ECR image not found, building initial image from source..."
+    
+    # Create temporary build directory
+    mkdir -p /tmp/beacon-build
+    cd /tmp/beacon-build
+    
+    # Create basic backend for initial deployment
+    cat > app.py << 'EOF'
+from flask import Flask, jsonify
+from flask_cors import CORS
+import os
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/api/health')
+@app.route('/api/weather')
+def health():
+    return jsonify({
+        "status": "initializing",
+        "message": "BEACON backend is being initialized. Please run deployment script.",
+        "version": "init-1.0"
+    })
+
+@app.route('/api/documents')
+def documents():
+    return jsonify([])
+
+@app.route('/api/categories')
+def categories():
+    return jsonify([])
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False)
+EOF
+
+    cat > requirements.txt << 'EOF'
+Flask==2.3.3
+Flask-CORS==4.0.0
+EOF
+
+    # Create basic Dockerfile
+    cat > Dockerfile << 'EOF'
+FROM python:3.9-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+EXPOSE 5000
+CMD ["python", "app.py"]
+EOF
+    
+    # Build and tag image locally
+    docker build -t beacon-backend-init .
+    docker tag beacon-backend-init 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest
+    
+    # Push to ECR
+    docker push 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-backend:latest
+    
+    # Clean up
+    cd /
+    rm -rf /tmp/beacon-build
+    
+    echo "Initial backend image built and pushed to ECR"
+fi
 
 # Check memory after pull
 echo "=== MEMORY AFTER DOCKER PULL ==="

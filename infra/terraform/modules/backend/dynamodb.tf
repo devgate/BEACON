@@ -262,3 +262,9 @@ resource "aws_iam_role_policy_attachment" "backend_cloudwatch" {
   role       = aws_iam_role.backend_ec2.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
+
+# ECR permissions for Docker operations
+resource "aws_iam_role_policy_attachment" "backend_ecr" {
+  role       = aws_iam_role.backend_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}

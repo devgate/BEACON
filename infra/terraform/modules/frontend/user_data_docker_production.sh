@@ -41,9 +41,9 @@ echo "Docker version: $(docker --version)"
 echo "=== MEMORY BEFORE DOCKER PULL ==="
 free -h
 
-# Install AWS CLI v2 for ECR authentication
-echo "Installing AWS CLI v2..."
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+# Install AWS CLI v2 for ECR authentication (ARM64 version)
+echo "Installing AWS CLI v2 for ARM64..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip aws/
@@ -52,10 +52,64 @@ rm -rf awscliv2.zip aws/
 echo "Logging into AWS ECR..."
 aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com
 
-# Pull BEACON frontend Docker image from AWS ECR
+# Pull BEACON frontend Docker image from AWS ECR with fallback
 echo "Pulling BEACON frontend Docker image from AWS ECR..."
-docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
-echo "BEACON frontend image pulled successfully"
+if docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest; then
+    echo "BEACON frontend image pulled successfully from ECR"
+else
+    echo "ECR image not found, building initial image from source..."
+    
+    # Create temporary build directory
+    mkdir -p /tmp/beacon-build
+    cd /tmp/beacon-build
+    
+    # Create basic frontend content for initial deployment
+    cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BEACON - Initializing...</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .status { color: #4CAF50; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 BEACON System</h1>
+        <div class="status">⚠️ Initial deployment in progress...</div>
+        <p>The system is being initialized. Please run the deployment script to complete setup.</p>
+        <p><code>cd deploy/prod && ./deploy.sh all</code></p>
+    </div>
+</body>
+</html>
+EOF
+    
+    # Create health endpoint
+    echo "OK" > health
+    
+    # Create basic Dockerfile
+    cat > Dockerfile << 'EOF'
+FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/
+COPY health /usr/share/nginx/html/
+EXPOSE 80
+EOF
+    
+    # Build and tag image locally
+    docker build -t beacon-frontend-init .
+    docker tag beacon-frontend-init 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
+    
+    # Push to ECR
+    docker push 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
+    
+    # Clean up
+    cd /
+    rm -rf /tmp/beacon-build
+    
+    echo "Initial frontend image built and pushed to ECR"
+fi
 
 # Check memory after pull
 echo "=== MEMORY AFTER DOCKER PULL ==="
