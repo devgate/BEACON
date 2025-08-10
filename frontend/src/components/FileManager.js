@@ -23,7 +23,14 @@ const FileManager = ({ documents, onDelete }) => {
 
   if (documents.length === 0) {
     return (
-      <main className="rag-manager-area">
+      <main className="rag-manager-area" style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        background: '#1a202c', 
+        padding: '20px', 
+        overflowY: 'auto' 
+      }}>
         <div className="manager-header">
           <h1>RAG 문서 관리</h1>
           <p>PDF 파일을 업로드하고 관리하세요</p>
@@ -40,7 +47,14 @@ const FileManager = ({ documents, onDelete }) => {
   }
 
   return (
-    <main className="rag-manager-area">
+    <main className="rag-manager-area" style={{ 
+      flex: 1, 
+      display: 'flex', 
+      flexDirection: 'column', 
+      background: '#1a202c', 
+      padding: '20px', 
+      overflowY: 'auto' 
+    }}>
       <div className="manager-header">
         <h1>RAG 문서 관리</h1>
         <p>PDF 파일을 업로드하고 관리하세요</p>

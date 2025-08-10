@@ -164,7 +164,7 @@ const ModelSelector = ({ selectedModel, onModelSelect, disabled = false }) => {
       )}
 
       {models.length > 0 && (
-        <div className="model-list">
+        <div className="model-list" style={{ maxHeight: '200px', overflowY: 'auto' }}>
           {models.map((model) => (
             <div
               key={model.model_id}

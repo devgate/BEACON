@@ -132,10 +132,27 @@ const RAGManagerPage = () => {
   });
 
   return (
-    <div className="page-container">
-      <div className="main-container">
-        <aside className="sidebar">
-          <div className="sidebar-section">
+    <div className="page-container" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div className="main-container" style={{ 
+        display: 'flex', 
+        height: 'calc(100vh - 60px)', 
+        overflow: 'hidden' 
+      }}>
+        <aside className="sidebar" style={{ 
+          width: '280px',
+          background: '#2d3748',
+          borderRight: '1px solid #4a5568',
+          padding: '20px',
+          overflowY: 'auto',
+          height: '100%',
+          flexShrink: 0,
+          position: 'relative',
+          display: 'block'
+        }}>
+          <div className="sidebar-section" style={{
+            flex: 'none',
+            overflow: 'visible'
+          }}>
             <h3>문서 카테고리</h3>
             <CategoryList 
               categories={categories}

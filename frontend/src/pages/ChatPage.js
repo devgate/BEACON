@@ -168,9 +168,23 @@ const ChatPage = () => {
   };
 
   return (
-    <div className="page-container">
-      <div className="main-container">
-        <aside className="sidebar">
+    <div className="page-container" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div className="main-container" style={{ 
+        display: 'flex', 
+        height: 'calc(100vh - 60px)', 
+        overflow: 'hidden' 
+      }}>
+        <aside className="sidebar" style={{ 
+          width: '280px',
+          background: '#2d3748',
+          borderRight: '1px solid #4a5568',
+          padding: '20px',
+          overflowY: 'auto',
+          height: '100%',
+          flexShrink: 0,
+          position: 'relative',
+          display: 'block'
+        }}>
           <div className="sidebar-section">
             <ModelSelector
               selectedModel={selectedModel}
@@ -179,7 +193,10 @@ const ChatPage = () => {
             />
           </div>
           
-          <div className="sidebar-section">
+          <div className="sidebar-section" style={{
+            flex: 'none',
+            overflow: 'visible'
+          }}>
             <h3>문서 카테고리</h3>
             <CategoryList 
               categories={categories}
@@ -189,7 +206,14 @@ const ChatPage = () => {
           </div>
         </aside>
 
-        <main className="chat-area">
+        <main className="chat-area" style={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          background: '#1a202c', 
+          height: '100%', 
+          overflow: 'hidden' 
+        }}>
           {messages.length === 0 ? (
             <div className="chat-welcome">
               <h1>안녕하세요! AI 어시스턴트입니다</h1>
@@ -213,7 +237,15 @@ const ChatPage = () => {
             </div>
           ) : null}
 
-          <div className="chat-messages">
+          <div className="chat-messages" style={{ 
+            flex: 1, 
+            padding: '20px', 
+            overflowY: 'auto', 
+            overflowX: 'hidden', 
+            minHeight: 0, 
+            scrollBehavior: 'smooth',
+            WebkitOverflowScrolling: 'touch'
+          }}>
             {messages.map(message => (
               <ChatMessage key={message.id} message={message} />
             ))}

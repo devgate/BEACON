@@ -31,11 +31,23 @@ const ChatInput = ({ onSendMessage, disabled }) => {
           placeholder="질문을 입력하세요..."
           className="chat-input"
           disabled={disabled}
+          style={{
+            outline: 'none',
+            border: 'none',
+            background: 'transparent',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontFamily: '"Pretendard Variable", Pretendard, Inter, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif',
+            fontWeight: '400'
+          }}
         />
         <button 
           type="submit"
           className="send-btn"
           disabled={disabled || !message.trim()}
+          style={{
+            outline: 'none'
+          }}
         >
           <FontAwesomeIcon icon={faPaperPlane} />
         </button>

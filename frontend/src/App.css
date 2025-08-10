@@ -18,6 +18,13 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* 전체 컨테이너를 고정 높이로 설정 */
+.app-container,
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
@@ -137,23 +144,41 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  height: calc(100vh - 60px); /* 헤더 높이를 제외한 높이 */
 }
 
-/* Sidebar */
+/* Sidebar - 고정 포지션 */
 .sidebar {
   width: 280px;
   background: #2d3748;
   border-right: 1px solid #4a5568;
   padding: 20px;
   overflow-y: auto;
-  max-height: calc(100vh - 60px); /* Header 높이를 제외한 최대 높이 */
+  height: 100%; /* 부모 컨테이너 전체 높이 */
   flex-shrink: 0; /* 사이드바 크기 고정 */
   scroll-behavior: smooth; /* 부드러운 스크롤 */
+  position: relative; /* 레이아웃에서 고정 */
 }
 
 .sidebar-section {
   margin-bottom: 30px;
   flex-shrink: 0; /* 섹션이 압축되지 않도록 */
+}
+
+/* 사이드바 섹션들이 적절히 배치되도록 - flex 제거 */
+
+.sidebar-section:first-child {
+  flex-shrink: 0; /* 모델 선택기는 항상 상단에 고정 */
+}
+
+.sidebar-section:last-child {
+  margin-bottom: 0; /* 마지막 섹션의 하단 마진 제거 */
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .sidebar-section h3 {
@@ -163,22 +188,21 @@ body {
   font-weight: 600;
 }
 
-.sidebar-section:last-child {
-  margin-bottom: 0; /* 마지막 섹션의 하단 마진 제거 */
-}
-
-/* Chat Area */
+/* Chat Area - 독립적인 스크롤 영역 */
 .chat-area {
   flex: 1;
   display: flex;
   flex-direction: column;
   background: #1a202c;
   position: relative;
+  height: 100%; /* 부모 컨테이너 전체 높이 */
+  overflow: hidden; /* 자식 요소의 스크롤만 허용 */
 }
 
 .chat-welcome {
   text-align: center;
   padding: 60px 20px 40px;
+  flex-shrink: 0; /* 웰컴 메시지가 압축되지 않도록 */
 }
 
 .chat-welcome h1 {
@@ -204,6 +228,12 @@ body {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0; /* Flexbox에서 스크롤이 제대로 작동하도록 */
+  scroll-behavior: smooth;
+  /* 스크롤 성능 최적화 */
+  will-change: scroll-position;
+  -webkit-overflow-scrolling: touch; /* iOS 사파리 스크롤 개선 */
 }
 
 .message {
@@ -243,10 +273,12 @@ body {
   margin-top: 4px;
 }
 
-/* Chat Input */
+/* Chat Input - 하단 고정 */
 .chat-input-container {
   padding: 20px;
   border-top: 1px solid #4a5568;
+  flex-shrink: 0; /* 인풋 영역이 압축되지 않도록 */
+  background: #1a202c; /* 배경색 명시적 지정 */
 }
 
 .chat-input-wrapper {
@@ -657,22 +689,31 @@ body {
   transition: width 0.3s;
 }
 
-/* Scrollbar */
+/* Scrollbar - 개선된 스타일링 */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
   background: #1a202c;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: #4a5568;
-  border-radius: 3px;
+  border-radius: 4px;
+  border: 2px solid #1a202c;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2d3748;
+  background: #00d4ff;
+}
+
+/* Firefox 스크롤바 스타일 */
+.sidebar,
+.chat-messages {
+  scrollbar-width: thin;
+  scrollbar-color: #4a5568 #1a202c;
 }
 
 /* Filter Options */
@@ -802,4 +843,96 @@ body {
 .mode-info strong {
   color: #00d4ff;
   margin-right: 8px;
+}
+
+/* 반응형 디자인 - 모바일 최적화 */
+@media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+    height: calc(100vh - 60px);
+  }
+  
+  .sidebar {
+    width: 100%;
+    max-height: 30vh;
+    border-right: none;
+    border-bottom: 1px solid #4a5568;
+    position: relative;
+  }
+  
+  .chat-area {
+    flex: 1;
+    min-height: 0;
+  }
+  
+  .welcome-modes {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .message-content {
+    max-width: 90%;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    padding: 15px;
+    max-height: 25vh;
+  }
+  
+  .chat-messages {
+    padding: 15px;
+  }
+  
+  .chat-input-container {
+    padding: 15px;
+  }
+  
+  .message-content {
+    max-width: 95%;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+}
+
+/* 접근성 개선 - WCAG 2.1 AA 준수 */
+.sidebar-section h3,
+.category-name,
+.nav-tab {
+  font-size: 16px; /* 최소 폰트 크기 14px 이상 */
+}
+
+/* 키보드 내비게이션 지원 */
+.category-item:focus,
+.nav-tab:focus,
+.send-btn:focus,
+.chat-input:focus {
+  outline: 2px solid #00d4ff;
+  outline-offset: 2px;
+}
+
+/* 높은 대비 모드 지원 */
+@media (prefers-contrast: high) {
+  .sidebar {
+    border-right-color: #ffffff;
+  }
+  
+  .category-item {
+    border-color: #ffffff;
+  }
+  
+  .chat-input-container {
+    border-top-color: #ffffff;
+  }
+}
+
+/* 애니메이션 감소 모드 지원 */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+  
+  .scroll-behavior: auto;
 }

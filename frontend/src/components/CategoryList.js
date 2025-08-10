@@ -17,7 +17,13 @@ const CategoryList = ({ categories, selectedCategoryId, onSelectCategory, onSett
   };
 
   return (
-    <div className="category-list">
+    <div className="category-list" style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      gap: '8px',
+      overflow: 'visible',
+      flex: 'none'
+    }}>
       <div 
         className={`category-item ${selectedCategoryId === 'all' ? 'active' : ''}`}
         onClick={() => onSelectCategory(selectedCategoryId === 'all' ? null : 'all')}
