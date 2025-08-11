@@ -17,16 +17,17 @@ AWS_ACCOUNT_ID="933851512157"
 AWS_REGION="ap-northeast-2"
 SSH_USER="ec2-user"
 SSH_KEY_PATH="${HOME}/.ssh/id_rsa"  # SSH 키 경로
-TERRAFORM_DIR="/Users/lyk/work/BEACON/infra/terraform"
+TERRAFORM_DIR="../../infra/terraform"
 
-# 인수 처리
-DEPLOY_TARGET=${1:-"all"}
-IMAGE_TAG=${2:-"latest"}
+# 전역 변수 선언
+SKIP_SETUP_CHECK=false
+DEPLOY_TARGET=""
+IMAGE_TAG="latest"
 
 # 사용법 출력 함수
 usage() {
     echo -e "${BLUE}=== BEACON Production 배포 스크립트 ===${NC}"
-    echo "사용법: $0 [TARGET] [TAG]"
+    echo "사용법: $0 [OPTIONS] [TARGET] [TAG]"
     echo ""
     echo "TARGET 옵션:"
     echo "  all        - Frontend + Backend 전체 배포 (기본값)"
@@ -37,22 +38,119 @@ usage() {
     echo "  latest     - 최신 이미지 태그 (기본값)"
     echo "  v1.0.1     - 특정 버전 태그"
     echo ""
+    echo "OPTIONS:"
+    echo "  --skip-setup   - setup-guide.sh 실행 체크를 건너뜀"
+    echo "  -h, --help     - 이 도움말을 표시"
+    echo ""
     echo "사전 요구사항:"
-    echo "  1. SSH 키가 ~/.ssh/id_rsa에 있어야 함"
-    echo "  2. EC2 인스턴스에 SSH 키가 등록되어 있어야 함"
-    echo "  3. AWS CLI가 설정되어 있어야 함"
+    echo "  1. setup-guide.sh 실행 완료 (또는 --skip-setup 플래그 사용)"
+    echo "  2. SSH 키가 ~/.ssh/id_rsa에 있어야 함"
+    echo "  3. EC2 인스턴스에 SSH 키가 등록되어 있어야 함"
+    echo "  4. AWS CLI가 설정되어 있어야 함"
     echo ""
     echo "예시:"
-    echo "  $0 all latest          # 전체 배포"
-    echo "  $0 frontend v1.0.1     # 프론트엔드만 특정 버전으로 배포"
-    echo "  $0 backend             # 백엔드만 배포"
+    echo "  $0 all latest              # 전체 배포 (setup-guide 체크 포함)"
+    echo "  $0 --skip-setup frontend   # setup-guide 체크 건너뛰고 프론트엔드만 배포"
+    echo "  $0 backend v1.0.1          # 백엔드만 특정 버전으로 배포"
+    echo ""
+    echo "첫 사용 시에는 다음 명령어로 환경을 먼저 설정하세요:"
+    echo "  ./setup-guide.sh"
     exit 0
 }
 
-# 도움말 요청 처리
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    usage
-fi
+
+# setup-guide.sh 실행 여부 확인 함수
+check_setup_guide_completion() {
+    log_info "배포 환경 설정 상태 확인 중..."
+    
+    local setup_complete=true
+    
+    # 1. 필수 도구 설치 확인
+    if ! command -v aws &> /dev/null; then
+        setup_complete=false
+    fi
+    
+    if ! command -v terraform &> /dev/null; then
+        setup_complete=false
+    fi
+    
+    if ! command -v docker &> /dev/null || ! docker info >/dev/null 2>&1; then
+        setup_complete=false
+    fi
+    
+    # 2. AWS 인증 확인
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+        setup_complete=false
+    fi
+    
+    # 3. SSH 키 확인
+    if [[ ! -f ~/.ssh/id_rsa ]] || [[ ! -f ~/.ssh/id_rsa.pub ]]; then
+        setup_complete=false
+    fi
+    
+    # 4. Terraform 상태 확인
+    if [[ ! -f "../../infra/terraform/terraform.tfstate" ]] && [[ ! -f "../../infra/terraform/.terraform/terraform.tfstate" ]]; then
+        setup_complete=false
+    fi
+    
+    if $setup_complete; then
+        log_success "배포 환경 설정이 완료되어 있습니다."
+        return 0
+    else
+        return 1
+    fi
+}
+
+# setup-guide.sh 자동 실행 함수
+run_setup_guide() {
+    log_warning "배포 환경이 완전히 설정되지 않았습니다."
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}❗ 초기 설정이 필요합니다${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo
+    echo -e "배포를 진행하기 전에 다음 설정이 필요합니다:"
+    echo -e "  • 필수 도구 설치 (AWS CLI, Terraform, Docker)"
+    echo -e "  • AWS 인증 설정"
+    echo -e "  • SSH 키 생성/확인"
+    echo -e "  • 인프라 배포"
+    echo
+    echo -e "${YELLOW}setup-guide.sh를 실행하여 환경을 설정하시겠습니까? (y/n): ${NC}"
+    read -r run_setup
+    
+    if [[ "$run_setup" == "y" || "$run_setup" == "Y" ]]; then
+        log_info "setup-guide.sh를 실행합니다..."
+        
+        # setup-guide.sh 파일 존재 확인
+        if [[ ! -f "setup-guide.sh" ]]; then
+            log_error "setup-guide.sh 파일을 찾을 수 없습니다."
+            log_error "현재 디렉토리: $(pwd)"
+            log_error "setup-guide.sh가 deploy.sh와 같은 디렉토리에 있는지 확인하세요."
+            exit 1
+        fi
+        
+        # 실행 권한 확인 및 설정
+        chmod +x setup-guide.sh
+        
+        # setup-guide.sh 실행
+        ./setup-guide.sh
+        
+        # 설정 완료 후 재확인
+        echo
+        log_info "설정 완료 후 상태를 재확인합니다..."
+        if ! check_setup_guide_completion; then
+            log_error "설정이 완료되지 않았습니다. 설정을 확인하고 다시 시도하세요."
+            exit 1
+        fi
+        
+        log_success "환경 설정이 완료되었습니다. 배포를 계속 진행합니다."
+        echo
+    else
+        log_error "환경 설정이 완료되지 않았습니다."
+        log_error "배포를 진행하려면 먼저 setup-guide.sh를 실행하여 환경을 설정하세요:"
+        echo -e "${BLUE}./setup-guide.sh${NC}"
+        exit 1
+    fi
+}
 
 # 로깅 함수
 log_info() {
@@ -428,29 +526,73 @@ get_instance_info() {
     # stderr로 로그 출력하여 stdout과 분리
     log_info "${service} 인스턴스 정보 조회 중..." >&2
     
-    cd ${TERRAFORM_DIR}
+    # 현재 디렉토리 저장
+    local original_dir=$(pwd)
     
-    # Terraform 상태 확인
-    if [[ ! -f "terraform.tfstate" ]] && [[ ! -f ".terraform/terraform.tfstate" ]]; then
-        log_error "Terraform 상태 파일을 찾을 수 없습니다. 먼저 인프라를 배포하세요." >&2
-        exit 1
+    # Terraform 디렉토리로 이동
+    local terraform_full_path="${original_dir}/${TERRAFORM_DIR}"
+    log_info "Terraform 디렉토리로 이동: ${terraform_full_path}" >&2
+    
+    if [[ ! -d "${terraform_full_path}" ]]; then
+        log_error "Terraform 디렉토리를 찾을 수 없습니다: ${terraform_full_path}" >&2
+        return 1
+    fi
+    
+    cd "${terraform_full_path}" || {
+        log_error "Terraform 디렉토리로 이동할 수 없습니다: ${terraform_full_path}" >&2
+        return 1
+    }
+    
+    # Terraform 초기화 확인
+    if [[ ! -d ".terraform" ]]; then
+        log_info "Terraform 초기화 중..." >&2
+        terraform init >&2 || {
+            log_error "Terraform 초기화 실패" >&2
+            cd "${original_dir}"
+            return 1
+        }
     fi
     
     # 인스턴스 IP 조회
     local instance_ip
-    if [[ "$service" == "frontend" ]]; then
-        instance_ip=$(terraform output -raw frontend_instance_public_ip 2>/dev/null)
-    elif [[ "$service" == "backend" ]]; then
-        instance_ip=$(terraform output -raw backend_instance_public_ip 2>/dev/null)
-    fi
+    local terraform_output_error
     
-    # IP 유효성 검사
-    if [[ "$instance_ip" == *"not deployed"* ]] || [[ -z "$instance_ip" ]] || [[ "$instance_ip" == "null" ]]; then
-        log_error "${service} 인스턴스가 배포되지 않았거나 정보를 가져올 수 없습니다." >&2
+    if [[ "$service" == "frontend" ]]; then
+        instance_ip=$(terraform output -raw frontend_instance_public_ip 2>&1)
+        terraform_output_error=$?
+    elif [[ "$service" == "backend" ]]; then
+        instance_ip=$(terraform output -raw backend_instance_public_ip 2>&1)
+        terraform_output_error=$?
+    else
+        log_error "알 수 없는 서비스: ${service}" >&2
+        cd "${original_dir}"
         return 1
     fi
     
-    cd - > /dev/null
+    # Terraform 명령어 실행 오류 확인
+    if [[ $terraform_output_error -ne 0 ]]; then
+        log_error "Terraform output 명령어 실행 실패: ${instance_ip}" >&2
+        cd "${original_dir}"
+        return 1
+    fi
+    
+    # IP 유효성 검사 (더 정확한 검증)
+    if [[ -z "$instance_ip" ]] || [[ "$instance_ip" == "null" ]] || [[ "$instance_ip" == *"Error"* ]] || [[ "$instance_ip" == *"not deployed"* ]]; then
+        log_error "${service} 인스턴스가 배포되지 않았거나 정보를 가져올 수 없습니다." >&2
+        log_error "Terraform output 결과: ${instance_ip}" >&2
+        cd "${original_dir}"
+        return 1
+    fi
+    
+    # IP 형식 검증 (간단한 IP 형식 체크)
+    if ! [[ "$instance_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        log_error "${service} 인스턴스 IP 형식이 올바르지 않습니다: ${instance_ip}" >&2
+        cd "${original_dir}"
+        return 1
+    fi
+    
+    cd "${original_dir}"
+    log_success "${service} 인스턴스 IP 조회 성공: ${instance_ip}" >&2
     echo "$instance_ip"
 }
 
@@ -645,8 +787,37 @@ deploy_service() {
     log_success "=== $(echo ${service} | tr '[:lower:]' '[:upper:]') 배포 완료 ==="
 }
 
+# 플래그 파싱 함수
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --skip-setup)
+                SKIP_SETUP_CHECK=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                ;;
+            *)
+                if [[ -z "$DEPLOY_TARGET" ]]; then
+                    DEPLOY_TARGET="$1"
+                elif [[ "$IMAGE_TAG" == "latest" ]]; then
+                    IMAGE_TAG="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    # 기본값 설정
+    DEPLOY_TARGET=${DEPLOY_TARGET:-"all"}
+}
+
 # 메인 실행 함수
 main() {
+    # 인수 파싱
+    parse_arguments "$@"
+    
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}🚀 BEACON Production 배포 스크립트${NC}"
     echo -e "${BLUE}========================================${NC}"
@@ -655,7 +826,16 @@ main() {
     echo -e "SSH 키 경로: ${GREEN}${SSH_KEY_PATH}${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    # 종속성 확인
+    # setup-guide 실행 여부 확인 및 자동 실행
+    if [[ "$SKIP_SETUP_CHECK" != "true" ]]; then
+        if ! check_setup_guide_completion; then
+            run_setup_guide
+        fi
+    else
+        log_warning "--skip-setup 플래그가 설정되어 setup-guide 체크를 건너뜁니다."
+    fi
+    
+    # 종속성 확인 (간소화된 버전 - setup-guide에서 대부분 확인됨)
     check_dependencies
     
     # 배포 실행
