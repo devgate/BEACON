@@ -1505,28 +1505,6 @@ const RAGManagerPage = () => {
                 <span>Knowledge Manager</span>
               </button>
             </div>
-
-            {/* Indexed Document */}
-            <div className="menu-item">
-              <button 
-                className="menu-toggle"
-                onClick={() => toggleMenu('indexed')}
-              >
-                <FontAwesomeIcon icon={expandedMenu === 'indexed' ? faChevronDown : faChevronRight} />
-                <span>Indexed Document</span>
-              </button>
-            </div>
-
-            {/* OpenSearch Query */}
-            <div className="menu-item">
-              <button 
-                className="menu-toggle"
-                onClick={() => toggleMenu('opensearch')}
-              >
-                <FontAwesomeIcon icon={expandedMenu === 'opensearch' ? faChevronDown : faChevronRight} />
-                <span>OpenSearch Query</span>
-              </button>
-            </div>
           </nav>
         </aside>
 
@@ -1661,39 +1639,12 @@ const RAGManagerPage = () => {
               >
                 File Manager
               </button>
-           
-              <button 
-                className={`doc-tab ${activeDocTab === 'knowledge-builder' ? 'active' : ''}`}
-                onClick={() => setActiveDocTab('knowledge-builder')}
-              >
-                Knowledge Builder
-              </button>
-              <button 
-                className={`doc-tab ${activeDocTab === 'knowledge-finder' ? 'active' : ''}`}
-                onClick={() => setActiveDocTab('knowledge-finder')}
-              >
-                Knowledge Finder
-              </button>
-              <button 
-                className={`doc-tab ${activeDocTab === 'ai-master' ? 'active' : ''}`}
-                onClick={() => setActiveDocTab('ai-master')}
-              >
-                AI Master
-              </button>
              
             </div>
 
             {renderDocumentContent()}
 
-            {/* Pagination - Only show for file-manager */}
-            {activeDocTab === 'file-manager' && (
-              <div className="pagination">
-                <button className="page-btn">&lt;</button>
-                <button className="page-num active">1</button>
-                <button className="page-num">2</button>
-                <button className="page-btn">&gt;</button>
-              </div>
-            )}
+
           </div>
         </main>
       </div>
