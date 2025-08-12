@@ -1,24 +1,47 @@
 import React, { useState, useEffect, useRef } from 'react';
-import CategoryList from '../components/CategoryList';
 import ChatMessage from '../components/ChatMessage';
 import ChatInput from '../components/ChatInput';
-import ModelSelector from '../components/ModelSelector';
-import { chatService, bedrockService } from '../services/api';
+import ModelSelectorDropdown from '../components/ModelSelectorDropdown';
+import './ChatPage.css';
+import { chatService, bedrockService, documentService } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faComments } from '@fortawesome/free-solid-svg-icons';
+import { faComments, faFileAlt, faGlobe, faFile } from '@fortawesome/free-solid-svg-icons';
 
 const ChatPage = () => {
   const [messages, setMessages] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
   const [selectedModel, setSelectedModel] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [bedrockHealth, setBedrockHealth] = useState(null);
+  const [selectedSource, setSelectedSource] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [knowledgeBases, setKnowledgeBases] = useState([]);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    loadCategories();
     loadBedrockHealth();
+    loadUploadedFiles();
+    loadKnowledgeBases();
+
+    // Listen for localStorage changes (when RAG Manager updates knowledge list)
+    const handleStorageChange = (e) => {
+      if (e.key === 'ragManager_indexList') {
+        loadKnowledgeBases();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom events in case both tabs are on the same origin
+    const handleKnowledgeListUpdate = () => {
+      loadKnowledgeBases();
+    };
+
+    window.addEventListener('knowledgeListUpdated', handleKnowledgeListUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('knowledgeListUpdated', handleKnowledgeListUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -29,15 +52,6 @@ const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const loadCategories = async () => {
-    try {
-      const data = await chatService.getCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-    }
-  };
-
   const loadBedrockHealth = async () => {
     try {
       const health = await bedrockService.getHealth();
@@ -45,6 +59,59 @@ const ChatPage = () => {
     } catch (error) {
       console.error('Failed to load Bedrock health:', error);
       setBedrockHealth({ status: 'unavailable', rag_enabled: false });
+    }
+  };
+
+  const loadUploadedFiles = async () => {
+    try {
+      const response = await documentService.getDocuments();
+      const documents = response.documents || [];
+      // PDF 파일만 필터링
+      const pdfFiles = documents.filter(doc => 
+        doc.file_name && doc.file_name.toLowerCase().endsWith('.pdf')
+      );
+      setUploadedFiles(pdfFiles);
+    } catch (error) {
+      console.error('Failed to load uploaded files:', error);
+      // 에러 시 빈 배열 설정
+      setUploadedFiles([]);
+    }
+  };
+
+  const loadKnowledgeBases = async () => {
+    try {
+      // First try to get from localStorage (RAG Manager data)
+      const storedIndexList = localStorage.getItem('ragManager_indexList');
+      if (storedIndexList) {
+        const indexList = JSON.parse(storedIndexList);
+        setKnowledgeBases(indexList);
+        return;
+      }
+
+      // If no localStorage data, try API
+      const response = await documentService.getKnowledgeBases();
+      if (response && response.knowledge_bases) {
+        setKnowledgeBases(response.knowledge_bases);
+      } else {
+        // If API doesn't return data, use the default list
+        const defaultKnowledgeBases = [
+          { id: 'skshieldus_test', name: 'test', status: 'active' },
+          { id: 'skshieldus_poc_test_jji_p', name: 'SK 쉴더스 - Test -JJI - 비정형(PDF)', status: 'active' },
+          { id: 'skshieldus_poc_callcenter', name: 'SK쉴더스-고객센터', status: 'active' },
+          { id: 'skshieldus_poc_v2', name: 'SK 쉴더스 - 비정형(PDF)', status: 'active' }
+        ];
+        setKnowledgeBases(defaultKnowledgeBases);
+      }
+    } catch (error) {
+      console.error('Failed to load knowledge bases:', error);
+      // Use default list on error
+      const defaultKnowledgeBases = [
+        { id: 'skshieldus_test', name: 'test', status: 'active' },
+        { id: 'skshieldus_poc_test_jji_p', name: 'SK 쉴더스 - Test -JJI - 비정형(PDF)', status: 'active' },
+        { id: 'skshieldus_poc_callcenter', name: 'SK쉴더스-고객센터', status: 'active' },
+        { id: 'skshieldus_poc_v2', name: 'SK 쉴더스 - 비정형(PDF)', status: 'active' }
+      ];
+      setKnowledgeBases(defaultKnowledgeBases);
     }
   };
 
@@ -62,23 +129,13 @@ const ChatPage = () => {
     setIsLoading(true);
 
     try {
-      // Determine RAG settings based on category selection
-      // If no category selected, use general conversation mode
-      // If category selected, check if it has documents for RAG
-      let useRag = false;
-      if (selectedCategoryId) {
-        // Category is selected, check if there are documents available for RAG
-        if (selectedCategoryId === 'all') {
-          useRag = categories.some(cat => cat.document_count > 0);
-        } else {
-          const selectedCategory = categories.find(cat => cat.id === selectedCategoryId);
-          useRag = selectedCategory && selectedCategory.document_count > 0;
-        }
-      }
-      // If no category selected (selectedCategoryId is null), useRag remains false (general conversation)
+      // Determine if RAG should be used and get the knowledge base ID
+      const useRag = selectedSource && selectedSource.startsWith('kb_');
+      const knowledgeBaseId = useRag ? selectedSource.replace('kb_', '') : null;
       
       const settings = {
         use_rag: useRag,
+        knowledge_base_id: knowledgeBaseId,
         temperature: 0.7,
         max_tokens: 2048,
         top_k_documents: 5
@@ -86,7 +143,7 @@ const ChatPage = () => {
 
       const response = await chatService.sendMessage(
         message, 
-        selectedCategoryId, 
+        null, 
         selectedModel?.model_id,
         settings
       );
@@ -120,41 +177,6 @@ const ChatPage = () => {
     }
   };
 
-  const handleCategorySelect = (categoryId) => {
-    setSelectedCategoryId(categoryId);
-    
-    let systemMessage;
-    
-    if (categoryId === null) {
-      // Category deselected - switch to general conversation mode
-      systemMessage = {
-        id: Date.now(),
-        content: `💬 일반 대화 모드로 전환되었습니다. 문서 없이 자유롭게 대화할 수 있습니다.`,
-        type: 'ai',
-        timestamp: new Date()
-      };
-    } else {
-      // Category selected
-      const category = categoryId === 'all' 
-        ? { name: '전체', document_count: categories.reduce((sum, cat) => sum + (cat.document_count || 0), 0) }
-        : categories.find(cat => cat.id === categoryId);
-      
-      if (category) {
-        const mode = category.document_count > 0 ? 'RAG' : '일반 대화';
-        systemMessage = {
-          id: Date.now(),
-          content: `📁 "${category.name}" 카테고리가 선택되었습니다. (문서 ${category.document_count}개, ${mode} 모드)`,
-          type: 'ai',
-          timestamp: new Date()
-        };
-      }
-    }
-    
-    if (systemMessage) {
-      setMessages(prev => [...prev, systemMessage]);
-    }
-  };
-
   const handleModelSelect = (model) => {
     setSelectedModel(model);
     
@@ -168,84 +190,132 @@ const ChatPage = () => {
   };
 
   return (
-    <div className="page-container" style={{ height: '100vh', overflow: 'hidden' }}>
-      <div className="main-container" style={{ 
-        display: 'flex', 
-        height: 'calc(100vh - 60px)', 
-        overflow: 'hidden' 
-      }}>
-        <aside className="sidebar" style={{ 
-          width: '280px',
-          background: '#2d3748',
-          borderRight: '1px solid #4a5568',
-          padding: '20px',
-          overflowY: 'auto',
-          height: '100%',
-          flexShrink: 0,
-          position: 'relative',
-          display: 'block'
-        }}>
-          <div className="sidebar-section">
-            <ModelSelector
+    <div className="page-container">
+      <div className="main-container">
+        <aside className="sidebar">
+          
+          <div className="sidebar-section" style={{ marginBottom: '20px' }}>
+            <ModelSelectorDropdown
               selectedModel={selectedModel}
               onModelSelect={handleModelSelect}
               disabled={isLoading}
+              bedrockHealth={bedrockHealth}
             />
           </div>
           
-          <div className="sidebar-section" style={{
-            flex: 'none',
-            overflow: 'visible'
-          }}>
-            <h3>문서 카테고리</h3>
-            <CategoryList 
-              categories={categories}
-              selectedCategoryId={selectedCategoryId}
-              onSelectCategory={handleCategorySelect}
-            />
+          {/* 소스 선택 드롭다운 */}
+     
+          <div className="source-section">
+            <div className="source-header">
+              <h4>Source</h4>
+              <div className="source-status">
+                <FontAwesomeIcon icon={faFileAlt} className="status-icon" />
+                <span className="status-text">선택 가능</span>
+              </div>
+            </div>
+            <div className="source-dropdown-wrapper">
+              <div className="source-trigger">
+                <div className="trigger-content">
+                  <FontAwesomeIcon icon={faFileAlt} className="source-icon" />
+                  <div className="selected-info">
+                    <span className="selected-name">
+                      {selectedSource ? 
+                        (selectedSource.startsWith('kb_') ? 
+                          knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.name || '문서' :
+                          selectedSource.startsWith('doc_') ? 
+                            uploadedFiles.find(f => f.id === selectedSource.replace('doc_', ''))?.file_name || '문서' :
+                            '웹 검색'
+                        ) : 
+                        '소스 선택'
+                      }
+                    </span>
+                    {selectedSource && (
+                      <span className="selected-description">
+                        {selectedSource.startsWith('kb_') ? '문서' : 
+                         selectedSource.startsWith('doc_') ? 'PDF 문서' : '온라인 검색'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <select 
+                className="source-select"
+                value={selectedSource}
+                onChange={(e) => setSelectedSource(e.target.value)}
+              >
+                <option value="">소스를 선택하세요</option>
+                <optgroup label="문서">
+                  {knowledgeBases.length > 0 ? (
+                    knowledgeBases.map(kb => (
+                      <option key={kb.id} value={`kb_${kb.id}`}>
+                        {kb.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>문서가 없습니다</option>
+                  )}
+                </optgroup>
+                <optgroup label="웹">
+                  <option value="web_search">웹 검색</option>
+                </optgroup>
+              </select>
+            </div>
           </div>
+         
         </aside>
 
-        <main className="chat-area" style={{ 
-          flex: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          background: '#1a202c', 
-          height: '100%', 
-          overflow: 'hidden' 
-        }}>
+        <main className="chat-area">
           {messages.length === 0 ? (
             <div className="chat-welcome">
               <h1>안녕하세요! AI 어시스턴트입니다</h1>
               <div className="welcome-subtitle">
                 <FontAwesomeIcon icon={faComments} style={{ color: '#00d4ff' }} />
-                <span>
-                  {selectedCategoryId 
-                    ? "업로드된 문서에 대해 자유롭게 질문해보세요" 
-                    : "일반 대화나 문서 기반 질문 모두 가능합니다"
-                  }
-                </span>
+                <span>무엇이든 물어보세요. 도와드리겠습니다.</span>
               </div>
-              <div className="welcome-modes">
-                <div className="mode-info">
-                  <strong>💬 일반 대화:</strong> 카테고리를 선택하지 않으면 일반 대화 모드입니다
+              <div className="welcome-features" style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '16px',
+                marginTop: '32px'
+              }}>
+                <div className="feature-card" style={{
+                  padding: '16px',
+                  background: 'rgba(0, 212, 255, 0.05)',
+                  border: '1px solid rgba(0, 212, 255, 0.2)',
+                  borderRadius: '12px'
+                }}>
+                  <strong style={{ color: '#00d4ff' }}>🚀 빠른 응답</strong>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                    최신 AI 모델로 즉각적인 답변
+                  </p>
                 </div>
-                <div className="mode-info">
-                  <strong>📁 문서 기반:</strong> 카테고리를 선택하면 업로드된 문서를 기반으로 답변합니다
+                <div className="feature-card" style={{
+                  padding: '16px',
+                  background: 'rgba(0, 212, 255, 0.05)',
+                  border: '1px solid rgba(0, 212, 255, 0.2)',
+                  borderRadius: '12px'
+                }}>
+                  <strong style={{ color: '#00d4ff' }}>🎯 정확한 정보</strong>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                    신뢰할 수 있는 고품질 응답
+                  </p>
+                </div>
+                <div className="feature-card" style={{
+                  padding: '16px',
+                  background: 'rgba(0, 212, 255, 0.05)',
+                  border: '1px solid rgba(0, 212, 255, 0.2)',
+                  borderRadius: '12px'
+                }}>
+                  <strong style={{ color: '#00d4ff' }}>💡 다양한 주제</strong>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                    코딩부터 일상 대화까지
+                  </p>
                 </div>
               </div>
             </div>
           ) : null}
 
-          <div className="chat-messages" style={{ 
-            flex: 1, 
-            padding: '20px', 
-            overflowY: 'auto', 
-            overflowX: 'hidden', 
-            minHeight: 0, 
-            scrollBehavior: 'smooth',
-            WebkitOverflowScrolling: 'touch'
-          }}>
+          <div className="chat-messages">
             {messages.map(message => (
               <ChatMessage key={message.id} message={message} />
             ))}

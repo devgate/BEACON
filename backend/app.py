@@ -12,23 +12,36 @@ import time
 import json
 from typing import Optional
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Import our RAG components
 from bedrock_service import BedrockService, create_bedrock_service
 from vector_store import VectorStore, create_vector_store
 from rag_engine import RAGEngine, create_rag_engine
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import new document processing components (with fallback)
+try:
+    from document_processor import DocumentProcessor
+    from chroma_service import ChromaService, DocumentChunker
+    ENHANCED_PROCESSING_AVAILABLE = True
+    logger.info("Enhanced document processing modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"Enhanced document processing not available: {e}")
+    DocumentProcessor = None
+    ChromaService = None
+    DocumentChunker = None
+    ENHANCED_PROCESSING_AVAILABLE = False
 
 app = Flask(__name__)
 CORS(app, origins=['http://localhost:3000', 'http://localhost:8080'])
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB 최대 파일 크기
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
-# Initialize RAG system
+# Initialize RAG system and new components
 try:
-    logger.info("Initializing RAG system...")
+    logger.info("Initializing enhanced document processing system...")
     
     # Initialize Bedrock service
     bedrock_service = create_bedrock_service({
@@ -36,24 +49,43 @@ try:
         'AWS_PROFILE': os.getenv('AWS_PROFILE')
     })
     
-    # Initialize vector store
+    # Initialize vector store (legacy)
     vector_store = create_vector_store(
         table_name=os.getenv('DYNAMODB_VECTORS_TABLE', 'prod-beacon-vectors')
     )
     
-    # Initialize RAG engine
+    # Initialize RAG engine (legacy)
     rag_engine = create_rag_engine(bedrock_service, vector_store)
     
-    logger.info("RAG system initialized successfully")
+    # Initialize new components (if available)
+    document_processor = None
+    chroma_service = None
+    
+    if ENHANCED_PROCESSING_AVAILABLE:
+        try:
+            document_processor = DocumentProcessor()
+            chroma_service = ChromaService(persist_directory=os.getenv('CHROMA_DATA_DIR', 'chroma_data'))
+            logger.info("Enhanced document processing system initialized successfully")
+            CHROMA_ENABLED = True
+        except Exception as e:
+            logger.warning(f"Failed to initialize enhanced processing: {e}")
+            CHROMA_ENABLED = False
+    else:
+        logger.info("Enhanced processing not available, using legacy mode")
+        CHROMA_ENABLED = False
+    
     RAG_ENABLED = True
     
 except Exception as e:
-    logger.error(f"Failed to initialize RAG system: {e}")
+    logger.error(f"Failed to initialize document processing system: {e}")
     logger.info("Running in mock mode")
     RAG_ENABLED = False
+    CHROMA_ENABLED = False
     bedrock_service = None
     vector_store = None
     rag_engine = None
+    document_processor = None
+    chroma_service = None
 
 # Mock AI 응답 데이터
 MOCK_RESPONSES = [
@@ -72,8 +104,8 @@ CATEGORY_RESPONSES = {
     4: ["문서 내용을 검토했습니다.", "관련 정보는 다음과 같습니다.", "추가 참고사항입니다."]
 }
 
-# 허용된 파일 확장자
-ALLOWED_EXTENSIONS = {'pdf'}
+# 허용된 파일 확장자 (확장됨)
+ALLOWED_EXTENSIONS = {'pdf', 'txt', 'docx', 'doc', 'xlsx', 'xls', 'csv', 'json', 'md', 'rtf'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -89,6 +121,49 @@ def extract_text_from_pdf(file_stream):
     except Exception as e:
         print(f"PDF 텍스트 추출 오류: {e}")
         return None
+
+def generate_embeddings(texts, batch_size=10):
+    """
+    Generate embeddings for a list of texts using Bedrock
+    
+    Args:
+        texts: List of text strings
+        batch_size: Number of texts to process in each batch
+        
+    Returns:
+        List of embedding vectors
+    """
+    if not RAG_ENABLED or not bedrock_service:
+        logger.warning("Bedrock service not available, returning mock embeddings")
+        return [[0.0] * 1536 for _ in texts]  # Mock embeddings
+    
+    try:
+        embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            batch_embeddings = []
+            
+            for text in batch:
+                # Truncate text if too long
+                if len(text) > 8000:
+                    text = text[:8000]
+                
+                embedding = bedrock_service.generate_embedding(text)
+                batch_embeddings.append(embedding)
+            
+            embeddings.extend(batch_embeddings)
+            
+            # Add small delay to avoid rate limiting
+            if i + batch_size < len(texts):
+                time.sleep(0.1)
+        
+        logger.info(f"Generated {len(embeddings)} embeddings")
+        return embeddings
+        
+    except Exception as e:
+        logger.error(f"Failed to generate embeddings: {e}")
+        # Return mock embeddings as fallback
+        return [[0.0] * 1536 for _ in texts]
 
 def extract_images_from_pdf(file_stream, document_id):
     """
@@ -415,13 +490,217 @@ def chat():
     temperature = float(settings.get('temperature', 0.7))
     max_tokens = int(settings.get('max_tokens', 2048))
     use_rag = settings.get('use_rag', True)
+    knowledge_base_id = settings.get('knowledge_base_id', None)
     top_k_documents = int(settings.get('top_k_documents', 5))
     
     try:
         if RAG_ENABLED:
-            if use_rag and documents:
-                # Use RAG system with uploaded documents
-                logger.info(f"Processing RAG query: {user_message[:50]}... with model: {model_id}")
+            # Check if ChromaDB RAG should be used (when knowledge_base_id is provided)
+            use_chroma_rag = use_rag and knowledge_base_id and CHROMA_ENABLED and chroma_service
+            
+            if use_chroma_rag:
+                # Use ChromaDB RAG system
+                logger.info(f"Processing ChromaDB RAG query: {user_message[:50]}... with knowledge base: {knowledge_base_id}")
+                
+                import time
+                start_time = time.time()
+                
+                # Generate embedding for the user query
+                query_embeddings = generate_embeddings([user_message])
+                if not query_embeddings or len(query_embeddings) == 0:
+                    raise Exception("Failed to generate query embedding")
+                
+                query_embedding = query_embeddings[0]
+                
+                # Search similar chunks in ChromaDB filtered by knowledge base
+                search_results = chroma_service.search_similar_chunks(
+                    query_embedding=query_embedding,
+                    n_results=top_k_documents,
+                    document_filter=f"kb_{knowledge_base_id}_doc_"  # Filter by knowledge base
+                )
+                
+                # Check if we found relevant documents
+                if search_results['total_results'] > 0:
+                    # Build context from retrieved chunks
+                    context_chunks = search_results['chunks']
+                    metadatas = search_results['metadatas']
+                    distances = search_results['distances']
+                    
+                    # Format context for LLM
+                    context = "\n\n".join([
+                        f"문서 '{meta.get('document_name', 'Unknown')}' - 관련도: {1-distance:.3f}\n{chunk}"
+                        for chunk, meta, distance in zip(context_chunks, metadatas, distances)
+                    ])
+                    
+                    # Set default model if not specified
+                    if not model_id:
+                        available_models = bedrock_service.get_available_models()
+                        # Filter for text generation models
+                        text_models = [
+                            model for model in available_models 
+                            if 'TEXT' in model.output_modalities and 'EMBEDDING' not in model.output_modalities
+                        ]
+                        if text_models:
+                            # Prefer Claude models, then Amazon Nova, then others
+                            claude_models = [m for m in text_models if 'claude' in m.model_id.lower()]
+                            nova_models = [m for m in text_models if 'nova' in m.model_id.lower()]
+                            
+                            if claude_models:
+                                model_id = claude_models[0].model_id
+                            elif nova_models:
+                                model_id = nova_models[0].model_id
+                            else:
+                                model_id = text_models[0].model_id
+                        else:
+                            raise Exception("No text generation models available")
+                    
+                    # Create RAG system prompt
+                    system_prompt = f"""당신은 BEACON AI입니다. 사용자의 질문에 대해 제공된 문서 내용을 바탕으로 정확하고 도움이 되는 답변을 제공해주세요.
+
+문서 내용:
+{context}
+
+지침:
+1. 제공된 문서 내용을 바탕으로 답변하세요
+2. 문서에 없는 정보는 추측하지 말고 "문서에서 해당 정보를 찾을 수 없습니다"라고 말씀해주세요
+3. 답변은 한국어로 제공해주세요
+4. 가능한 구체적이고 상세한 답변을 제공해주세요
+5. 관련된 문서 섹션이나 내용을 인용할 때는 해당 문서명을 언급해주세요"""
+                    
+                    # Generate response using Bedrock with context
+                    response_data = bedrock_service.invoke_model(
+                        model_id=model_id,
+                        prompt=user_message,
+                        system_prompt=system_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature
+                    )
+                    
+                    processing_time = time.time() - start_time
+                    
+                    # Format referenced docs
+                    referenced_docs = []
+                    for meta, distance in zip(metadatas, distances):
+                        referenced_docs.append({
+                            'id': meta.get('document_id', 'unknown'),
+                            'title': meta.get('document_name', 'Unknown Document'),
+                            'has_file': True,
+                            'relevance_score': 1 - distance,
+                            'chunk_index': meta.get('chunk_index', 0)
+                        })
+                    
+                    # Save to chat history
+                    chat_entry = {
+                        'timestamp': datetime.now().isoformat(),
+                        'user_message': user_message,
+                        'ai_response': response_data['text'],
+                        'model_used': model_id,
+                        'knowledge_base_id': knowledge_base_id,
+                        'tokens_used': response_data.get('usage', {}),
+                        'cost_estimate': response_data.get('cost', {}),
+                        'confidence_score': sum(1-d for d in distances) / len(distances) if distances else 0.0,
+                        'processing_time': processing_time,
+                        'sources_count': len(context_chunks)
+                    }
+                    chat_history.append(chat_entry)
+                    
+                    return jsonify({
+                        'response': response_data['text'],
+                        'model_used': model_id,
+                        'timestamp': chat_entry['timestamp'],
+                        'tokens_used': response_data.get('usage', {}),
+                        'cost_estimate': response_data.get('cost', {}),
+                        'confidence_score': chat_entry['confidence_score'],
+                        'processing_time': processing_time,
+                        'images': [],
+                        'referenced_docs': referenced_docs[:3],
+                        'rag_enabled': True
+                    })
+                else:
+                    # No relevant documents found in ChromaDB, fall back to general response
+                    logger.warning(f"No relevant documents found in ChromaDB for query: {user_message[:50]}...")
+                    
+                    # Fall back to general conversation with Bedrock
+                    logger.info(f"Falling back to general conversation with Bedrock: {user_message[:50]}...")
+                    
+                    import time
+                    start_time = time.time()
+                    
+                    # Set default model if not specified
+                    if not model_id:
+                        available_models = bedrock_service.get_available_models()
+                        # Filter for text generation models (exclude embedding models)
+                        text_models = [
+                            model for model in available_models 
+                            if 'TEXT' in model.output_modalities and 'EMBEDDING' not in model.output_modalities
+                        ]
+                        if text_models:
+                            # Prefer Claude models, then Amazon Nova, then others
+                            claude_models = [m for m in text_models if 'claude' in m.model_id.lower()]
+                            nova_models = [m for m in text_models if 'nova' in m.model_id.lower()]
+                            
+                            if claude_models:
+                                model_id = claude_models[0].model_id
+                            elif nova_models:
+                                model_id = nova_models[0].model_id
+                            else:
+                                model_id = text_models[0].model_id
+                        else:
+                            raise Exception("No text generation models available")
+                    
+                    # Create a general conversation system prompt
+                    system_prompt = """당신은 BEACON AI입니다. 사용자와 자연스럽고 도움이 되는 대화를 나누세요. 
+한국어로 응답하되, 사용자가 다른 언어를 사용하면 해당 언어로 응답해주세요.
+정확한 정보를 제공하고, 모르는 것은 솔직히 모른다고 말씀해주세요.
+
+사용자가 문서나 자료에 대해 질문했지만, 업로드된 문서에서 관련 정보를 찾을 수 없었습니다. 
+이 경우 찾을 수 없다는 것을 알려주고 일반적인 정보나 조언을 제공해주세요."""
+                    
+                    # Invoke Bedrock model directly
+                    response_data = bedrock_service.invoke_model(
+                        model_id=model_id,
+                        prompt=user_message,
+                        system_prompt=system_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature
+                    )
+                    
+                    processing_time = time.time() - start_time
+                    
+                    # Save to chat history
+                    chat_entry = {
+                        'timestamp': datetime.now().isoformat(),
+                        'user_message': user_message,
+                        'ai_response': response_data['text'],
+                        'model_used': model_id,
+                        'category_id': selected_category_id,
+                        'knowledge_base_id': knowledge_base_id,
+                        'tokens_used': response_data.get('usage', {}),
+                        'cost_estimate': response_data.get('cost', {}),
+                        'confidence_score': 0.5,  # Lower confidence since no docs found
+                        'processing_time': processing_time,
+                        'rag_enabled': True,
+                        'sources_count': 0
+                    }
+                    chat_history.append(chat_entry)
+                    
+                    return jsonify({
+                        'response': response_data['text'],
+                        'model_used': model_id,
+                        'timestamp': chat_entry['timestamp'],
+                        'tokens_used': response_data.get('usage', {}),
+                        'cost_estimate': response_data.get('cost', {}),
+                        'confidence_score': chat_entry['confidence_score'],
+                        'processing_time': processing_time,
+                        'images': [],
+                        'referenced_docs': [],
+                        'rag_enabled': True,
+                        'sources_found': False
+                    })
+            
+            elif use_rag and documents:
+                # Use legacy RAG system with uploaded documents
+                logger.info(f"Processing legacy RAG query: {user_message[:50]}... with model: {model_id}")
                 
                 response_data = rag_engine.query(
                     query_text=user_message,
@@ -480,8 +759,8 @@ def chat():
                     'referenced_docs': referenced_docs[:3],  # Limit to 3 documents
                     'rag_enabled': True
                 })
-            else:
-                # Use Bedrock for general conversation without RAG
+            # Use Bedrock for general conversation without RAG (or ChromaDB had no results)
+            if not use_chroma_rag and not (use_rag and documents):
                 logger.info(f"Processing general conversation with Bedrock: {user_message[:50]}... with model: {model_id}")
                 
                 import time
@@ -685,6 +964,7 @@ def _generate_mock_response(user_message: str, category_id: Optional[int] = None
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
+    """Enhanced file upload with multiple format support and Chroma DB integration"""
     global document_counter
     
     if 'file' not in request.files:
@@ -694,100 +974,207 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
     
-    # 카테고리 ID 가져오기 (기본값: 일반 카테고리)
-    category_id = int(request.form.get('category_id', 4))  # 기본값: 일반 카테고리
+    # Get parameters
+    category_id = int(request.form.get('category_id', 4))
+    chunk_strategy = request.form.get('chunk_strategy', 'sentence')
+    chunk_size = int(request.form.get('chunk_size', 1000))
+    chunk_overlap = int(request.form.get('chunk_overlap', 100))
     
     if file and allowed_file(file.filename):
+        processing_start_time = time.time()
+        
         try:
-            # 파일 데이터를 메모리에 저장
-            file_data = file.read()
-            
-            # 안전한 파일명 생성
+            # Save file
             filename = secure_filename(file.filename)
             document_counter += 1
             
-            # 파일을 uploads 디렉토리에 저장
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"doc_{document_counter}_{filename}")
+            file.save(file_path)
             
-            with open(file_path, 'wb') as f:
-                f.write(file_data)
+            # Extract text using enhanced document processor
+            text_content = ""
+            extraction_metadata = {}
+            images = []
             
-            # PDF 텍스트 추출
-            text_stream = io.BytesIO(file_data)
-            text_content = extract_text_from_pdf(text_stream)
-            
-            if text_content:
-                # 이미지 추출 (새로운 스트림 사용)
-                image_stream = io.BytesIO(file_data)
-                images = extract_images_from_pdf(image_stream, document_counter)
-                
-                # 문서 리스트에 추가 (카테고리 정보 포함)
-                new_doc = {
-                    'id': document_counter,
-                    'title': filename,
-                    'content': text_content,
-                    'type': 'uploaded',
-                    'images': images,
-                    'file_path': file_path,
-                    'original_filename': file.filename,
-                    'category_id': category_id
-                }
-                documents.append(new_doc)
-                
-                # Process document with RAG system if available
-                processing_result = None
-                if RAG_ENABLED:
-                    try:
-                        # Get category settings
-                        category_settings = next(
-                            (cat.get('settings', {}) for cat in categories if cat['id'] == category_id),
-                            {'chunk_strategy': 'sentence', 'chunk_size': 512, 'chunk_overlap': 50}
-                        )
-                        
-                        logger.info(f"Processing document with RAG: {filename}")
-                        processing_result = rag_engine.process_document(
-                            document_id=str(document_counter),
-                            title=filename,
-                            content=text_content,
-                            category_id=category_id,
-                            category_settings=category_settings
-                        )
-                        
-                        logger.info(f"Document processed successfully: {processing_result.chunks_created} chunks created")
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to process document with RAG: {e}")
-                        # Continue without RAG processing
-                
-                response_data = {
-                    'success': True,
-                    'message': f'"{file.filename}" 파일이 성공적으로 업로드되었습니다.',
-                    'document': {
-                        'id': new_doc['id'],
-                        'title': new_doc['title'],
-                        'preview': text_content[:200] + '...' if len(text_content) > 200 else text_content
-                    },
-                    'rag_enabled': RAG_ENABLED
-                }
-                
-                # Add RAG processing info if available
-                if processing_result:
-                    response_data['processing'] = {
-                        'chunks_created': processing_result.chunks_created,
-                        'embeddings_generated': processing_result.embeddings_generated,
-                        'processing_time': round(processing_result.processing_time, 2),
-                        'total_tokens': processing_result.total_tokens
-                    }
-                
-                return jsonify(response_data)
+            if document_processor:
+                try:
+                    text_content, extraction_metadata = document_processor.extract_text(file_path)
+                    logger.info(f"Text extracted using enhanced processor: {len(text_content)} characters")
+                except Exception as e:
+                    logger.warning(f"Enhanced extraction failed, falling back to PDF-only: {e}")
+                    # Fallback to original PDF extraction for PDFs
+                    if file.filename.lower().endswith('.pdf'):
+                        with open(file_path, 'rb') as f:
+                            text_content = extract_text_from_pdf(f)
+                        if text_content:
+                            with open(file_path, 'rb') as f:
+                                images = extract_images_from_pdf(f, document_counter)
             else:
-                return jsonify({'error': 'PDF에서 텍스트를 추출할 수 없습니다.'}), 400
-                
+                # Fallback to original method if processor not available
+                if file.filename.lower().endswith('.pdf'):
+                    with open(file_path, 'rb') as f:
+                        text_content = extract_text_from_pdf(f)
+                    if text_content:
+                        with open(file_path, 'rb') as f:
+                            images = extract_images_from_pdf(f, document_counter)
+            
+            if not text_content or not text_content.strip():
+                return jsonify({'error': '파일에서 텍스트를 추출할 수 없습니다.'}), 400
+            
+            # Create document entry
+            new_doc = {
+                'id': document_counter,
+                'title': filename,
+                'content': text_content,
+                'type': 'uploaded',
+                'images': images,
+                'file_path': file_path,
+                'original_filename': file.filename,
+                'category_id': category_id,
+                'extraction_metadata': extraction_metadata,
+                'uploaded_at': datetime.now().isoformat(),
+                'file_size': os.path.getsize(file_path)
+            }
+            documents.append(new_doc)
+            
+            # Enhanced document processing with chunking and embeddings
+            chroma_processing_result = None
+            legacy_rag_result = None
+            
+            if CHROMA_ENABLED and chroma_service:
+                try:
+                    logger.info(f"Processing document with Chroma DB: {filename}")
+                    
+                    # Generate chunks using configurable strategy (with fallback)
+                    if DocumentChunker:
+                        if chunk_strategy == 'sentence':
+                            chunks = DocumentChunker.chunk_by_sentences(
+                                text_content, max_chunk_size=chunk_size, overlap=chunk_overlap
+                            )
+                        elif chunk_strategy == 'paragraph':
+                            chunks = DocumentChunker.chunk_by_paragraphs(
+                                text_content, max_chunk_size=chunk_size
+                            )
+                        elif chunk_strategy == 'token':
+                            chunks = DocumentChunker.chunk_by_tokens(
+                                text_content, max_tokens=chunk_size//4, overlap_tokens=chunk_overlap//4
+                            )
+                        else:
+                            chunks = DocumentChunker.chunk_by_sentences(text_content, chunk_size, chunk_overlap)
+                    else:
+                        # Simple fallback chunking
+                        words = text_content.split()
+                        chunks = []
+                        current_chunk = ""
+                        for word in words:
+                            if len(current_chunk) + len(word) < chunk_size:
+                                current_chunk += word + " "
+                            else:
+                                if current_chunk:
+                                    chunks.append(current_chunk.strip())
+                                current_chunk = word + " "
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                    
+                    # Generate embeddings
+                    embeddings = generate_embeddings(chunks)
+                    
+                    # Store in Chroma DB
+                    document_id = f"doc_{document_counter}"
+                    success = chroma_service.add_document_chunks(
+                        chunks=chunks,
+                        embeddings=embeddings,
+                        document_id=document_id,
+                        document_name=filename,
+                        metadata={
+                            'category_id': category_id,
+                            'chunk_strategy': chunk_strategy,
+                            'chunk_size': chunk_size,
+                            'file_extension': extraction_metadata.get('file_extension', ''),
+                            'original_filename': file.filename
+                        }
+                    )
+                    
+                    chroma_processing_result = {
+                        'success': success,
+                        'chunks_created': len(chunks),
+                        'embeddings_generated': len(embeddings),
+                        'chunk_strategy': chunk_strategy,
+                        'average_chunk_size': sum(len(chunk) for chunk in chunks) // len(chunks) if chunks else 0
+                    }
+                    
+                    new_doc['chunk_count'] = len(chunks)
+                    
+                    logger.info(f"Chroma DB processing completed: {len(chunks)} chunks created")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process document with Chroma DB: {e}")
+                    chroma_processing_result = {'success': False, 'error': str(e)}
+            
+            # Legacy RAG processing (keep for compatibility)
+            if RAG_ENABLED and rag_engine:
+                try:
+                    category_settings = next(
+                        (cat.get('settings', {}) for cat in categories if cat['id'] == category_id),
+                        {'chunk_strategy': chunk_strategy, 'chunk_size': chunk_size, 'chunk_overlap': chunk_overlap}
+                    )
+                    
+                    legacy_rag_result = rag_engine.process_document(
+                        document_id=str(document_counter),
+                        title=filename,
+                        content=text_content,
+                        category_id=category_id,
+                        category_settings=category_settings
+                    )
+                    
+                    logger.info(f"Legacy RAG processing completed")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process document with legacy RAG: {e}")
+            
+            # Prepare response
+            processing_time = time.time() - processing_start_time
+            
+            response_data = {
+                'success': True,
+                'message': f'"{file.filename}" 파일이 성공적으로 업로드되었습니다.',
+                'document': {
+                    'id': new_doc['id'],
+                    'title': new_doc['title'],
+                    'preview': text_content[:200] + '...' if len(text_content) > 200 else text_content,
+                    'file_size': new_doc['file_size'],
+                    'file_extension': extraction_metadata.get('file_extension', ''),
+                    'extraction_method': extraction_metadata.get('extraction_method', 'unknown')
+                },
+                'processing_time': round(processing_time, 2),
+                'chroma_enabled': CHROMA_ENABLED,
+                'rag_enabled': RAG_ENABLED
+            }
+            
+            # Add processing results
+            if chroma_processing_result:
+                response_data['chroma_processing'] = chroma_processing_result
+            
+            if legacy_rag_result:
+                response_data['legacy_rag_processing'] = {
+                    'chunks_created': legacy_rag_result.chunks_created,
+                    'embeddings_generated': legacy_rag_result.embeddings_generated,
+                    'processing_time': round(legacy_rag_result.processing_time, 2),
+                    'total_tokens': legacy_rag_result.total_tokens
+                }
+            
+            # Add extraction metadata
+            if extraction_metadata:
+                response_data['extraction_metadata'] = extraction_metadata
+            
+            return jsonify(response_data)
+            
         except Exception as e:
+            logger.error(f"Upload processing failed: {e}")
             return jsonify({'error': f'파일 처리 중 오류가 발생했습니다: {str(e)}'}), 500
     
-    return jsonify({'error': 'PDF 파일만 업로드 가능합니다.'}), 400
+    return jsonify({'error': f'지원되지 않는 파일 형식입니다. 지원 형식: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
 
 @app.route('/api/chat/history')
 def get_chat_history():
@@ -875,6 +1262,495 @@ def delete_document(doc_id):
     except Exception as e:
         print(f"문서 삭제 오류: {e}")
         return jsonify({'error': f'문서 삭제 중 오류가 발생했습니다: {str(e)}'}), 500
+
+# Knowledge Base Management APIs
+@app.route('/api/knowledge')
+def get_knowledge_bases():
+    """Get list of knowledge bases"""
+    try:
+        # Mock knowledge bases for now - in production, this would come from your vector store or database
+        knowledge_bases = [
+            {
+                'id': 'skshieldus_test',
+                'name': 'test',
+                'description': 'Test knowledge base',
+                'status': 'active',
+                'created_at': '2024-01-01T00:00:00Z',
+                'document_count': 0
+            },
+            {
+                'id': 'skshieldus_poc_test_jji_p',
+                'name': 'SK 쉴더스 - Test -JJI - 비정형(PDF)',
+                'description': 'Test knowledge base for JJI PDF documents',
+                'status': 'active',
+                'created_at': '2024-01-01T00:00:00Z',
+                'document_count': 0
+            },
+            {
+                'id': 'skshieldus_poc_callcenter',
+                'name': 'SK쉴더스-고객센터',
+                'description': 'SK Shieldus call center knowledge base',
+                'status': 'active',
+                'created_at': '2024-01-01T00:00:00Z',
+                'document_count': len([d for d in documents if d.get('index_id') == 'skshieldus_poc_callcenter'])
+            },
+            {
+                'id': 'skshieldus_poc_v2',
+                'name': 'SK 쉴더스 - 비정형(PDF)',
+                'description': 'SK Shieldus PDF documents knowledge base',
+                'status': 'active',
+                'created_at': '2024-01-01T00:00:00Z',
+                'document_count': 0
+            }
+        ]
+        
+        return jsonify({
+            'success': True,
+            'knowledge_bases': knowledge_bases
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get knowledge bases: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/<index_id>/documents')
+def get_knowledge_base_documents(index_id):
+    """Get documents for a specific knowledge base"""
+    try:
+        # Filter documents by index_id
+        kb_documents = [d for d in documents if d.get('index_id') == index_id]
+        
+        # Format documents for frontend
+        formatted_docs = []
+        for doc in kb_documents:
+            formatted_docs.append({
+                'id': doc['id'],
+                'file_name': doc['title'],
+                'file_size': doc.get('file_size', 0),
+                'uploaded_at': doc.get('uploaded_at', datetime.now().isoformat()),
+                'status': doc.get('status', 'Success'),
+                'chunk_count': doc.get('chunk_count', 1),
+                'index_id': index_id
+            })
+        
+        return jsonify({
+            'success': True,
+            'documents': formatted_docs,
+            'total': len(formatted_docs)
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get documents for knowledge base {index_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/upload', methods=['POST'])
+def upload_to_knowledge_base():
+    """Upload file to specific knowledge base"""
+    if 'file' not in request.files:
+        return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
+    
+    file = request.files['file']
+    index_id = request.form.get('index_id')
+    
+    if file.filename == '':
+        return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
+        
+    if not index_id:
+        return jsonify({'error': 'Knowledge base ID가 필요합니다.'}), 400
+    
+    try:
+        # Secure filename
+        filename = secure_filename(file.filename)
+        
+        # Create unique filename
+        timestamp = str(int(time.time()))
+        unique_filename = f"{timestamp}_{filename}"
+        
+        # Ensure upload directory exists
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Save file
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        file.save(file_path)
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        # Process file content
+        content = ""
+        try:
+            if filename.lower().endswith('.pdf'):
+                # PDF processing
+                with open(file_path, 'rb') as pdf_file:
+                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    for page in pdf_reader.pages:
+                        content += page.extract_text() + "\n"
+            elif filename.lower().endswith(('.txt', '.md')):
+                # Text file processing
+                with open(file_path, 'r', encoding='utf-8') as txt_file:
+                    content = txt_file.read()
+            else:
+                content = f"File: {filename} (Content not extracted)"
+                
+        except Exception as e:
+            logger.warning(f"Could not extract content from {filename}: {e}")
+            content = f"File: {filename} (Content extraction failed)"
+        
+        # Create document record
+        new_doc = {
+            'id': len(documents) + 1,
+            'title': filename,
+            'content': content[:1000] + ('...' if len(content) > 1000 else ''),
+            'file_path': file_path,
+            'file_size': file_size,
+            'uploaded_at': datetime.now().isoformat(),
+            'category_id': None,
+            'index_id': index_id,
+            'status': 'Success',
+            'chunk_count': max(1, len(content) // 1000)  # Estimate chunks
+        }
+        
+        documents.append(new_doc)
+        
+        # Add to ChromaDB if enabled, otherwise fallback to legacy RAG
+        chunks_added = 0
+        if CHROMA_ENABLED and chroma_service and content.strip():
+            try:
+                # Get processing parameters
+                chunk_strategy = request.form.get('chunking_strategy', 'sentence')
+                chunk_size = int(request.form.get('chunk_size', 1000))
+                chunk_overlap = int(request.form.get('chunk_overlap', 100))
+                
+                # Generate chunks using DocumentChunker
+                if DocumentChunker:
+                    if chunk_strategy == 'sentence':
+                        chunks = DocumentChunker.chunk_by_sentences(
+                            content, max_chunk_size=chunk_size, overlap=chunk_overlap
+                        )
+                    elif chunk_strategy == 'paragraph':
+                        chunks = DocumentChunker.chunk_by_paragraphs(
+                            content, max_chunk_size=chunk_size
+                        )
+                    elif chunk_strategy == 'token':
+                        chunks = DocumentChunker.chunk_by_tokens(
+                            content, max_tokens=chunk_size//4, overlap_tokens=chunk_overlap//4
+                        )
+                    else:
+                        chunks = DocumentChunker.chunk_by_sentences(content, chunk_size, chunk_overlap)
+                else:
+                    # Simple fallback chunking
+                    words = content.split()
+                    chunks = []
+                    current_chunk = ""
+                    for word in words:
+                        if len(current_chunk) + len(word) < chunk_size:
+                            current_chunk += word + " "
+                        else:
+                            if current_chunk:
+                                chunks.append(current_chunk.strip())
+                            current_chunk = word + " "
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                
+                # Generate embeddings
+                embeddings = generate_embeddings(chunks)
+                
+                # Store in Chroma DB
+                document_id = f"kb_{index_id}_doc_{new_doc['id']}"
+                success = chroma_service.add_document_chunks(
+                    chunks=chunks,
+                    embeddings=embeddings,
+                    document_id=document_id,
+                    document_name=filename,
+                    metadata={
+                        'index_id': index_id,
+                        'chunk_strategy': chunk_strategy,
+                        'chunk_size': chunk_size,
+                        'original_filename': filename,
+                        'file_path': file_path,
+                        'uploaded_at': new_doc['uploaded_at']
+                    }
+                )
+                
+                if success:
+                    chunks_added = len(chunks)
+                    new_doc['chunk_count'] = len(chunks)
+                    logger.info(f"Added {chunks_added} chunks to ChromaDB for document {new_doc['id']}")
+                else:
+                    logger.error("Failed to add chunks to ChromaDB")
+                    
+            except Exception as e:
+                logger.error(f"Failed to add document to ChromaDB: {e}")
+                # Fallback to legacy RAG system
+                try:
+                    chunks_added = rag_engine.add_document(
+                        doc_id=str(new_doc['id']),
+                        content=content,
+                        metadata={
+                            'title': filename,
+                            'file_path': file_path,
+                            'index_id': index_id,
+                            'category_id': new_doc.get('category_id'),
+                            'uploaded_at': new_doc['uploaded_at']
+                        }
+                    )
+                    logger.info(f"Fallback: Added {chunks_added} chunks to legacy RAG system")
+                except Exception as e2:
+                    logger.error(f"Both ChromaDB and legacy RAG failed: {e2}")
+                    
+        elif RAG_ENABLED and content.strip():
+            # Use legacy RAG system only
+            try:
+                chunks_added = rag_engine.add_document(
+                    doc_id=str(new_doc['id']),
+                    content=content,
+                    metadata={
+                        'title': filename,
+                        'file_path': file_path,
+                        'index_id': index_id,
+                        'category_id': new_doc.get('category_id'),
+                        'uploaded_at': new_doc['uploaded_at']
+                    }
+                )
+                logger.info(f"Added {chunks_added} chunks to legacy RAG system for document {new_doc['id']}")
+            except Exception as e:
+                logger.error(f"Failed to add document to legacy RAG system: {e}")
+        
+        logger.info(f"파일 업로드 완료: {filename} (ID: {new_doc['id']}, Index: {index_id})")
+        
+        return jsonify({
+            'success': True,
+            'message': f'파일 "{filename}"이 성공적으로 업로드되었습니다.',
+            'document_id': new_doc['id'],
+            'chunks_added': chunks_added,
+            'document': {
+                'id': new_doc['id'],
+                'file_name': new_doc['title'],
+                'file_size': new_doc['file_size'],
+                'uploaded_at': new_doc['uploaded_at'],
+                'status': new_doc['status'],
+                'chunk_count': new_doc['chunk_count'],
+                'index_id': index_id
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"파일 업로드 오류: {e}")
+        return jsonify({'error': f'파일 업로드 중 오류가 발생했습니다: {str(e)}'}), 500
+
+@app.route('/api/documents/bulk', methods=['DELETE'])
+def delete_multiple_documents():
+    """Delete multiple documents"""
+    global documents
+    
+    data = request.get_json()
+    document_ids = data.get('document_ids', [])
+    
+    if not document_ids:
+        return jsonify({'error': 'Document IDs are required'}), 400
+    
+    try:
+        deleted_count = 0
+        deleted_docs = []
+        
+        for doc_id in document_ids:
+            # Find document
+            doc_to_delete = next((d for d in documents if d['id'] == doc_id), None)
+            if not doc_to_delete:
+                continue
+                
+            deleted_docs.append(doc_to_delete['title'])
+            
+            # Delete file if exists
+            try:
+                if 'file_path' in doc_to_delete and os.path.exists(doc_to_delete['file_path']):
+                    os.remove(doc_to_delete['file_path'])
+            except Exception as e:
+                logger.warning(f"Failed to delete file for document {doc_id}: {e}")
+            
+            # Delete from RAG system
+            if RAG_ENABLED:
+                try:
+                    rag_engine.delete_document(str(doc_id))
+                except Exception as e:
+                    logger.error(f"Failed to delete document {doc_id} from RAG system: {e}")
+            
+            deleted_count += 1
+        
+        # Remove documents from list
+        documents = [d for d in documents if d['id'] not in document_ids]
+        
+        return jsonify({
+            'success': True,
+            'message': f'{deleted_count} documents deleted successfully',
+            'deleted_documents': deleted_docs,
+            'deleted_count': deleted_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Bulk delete error: {e}")
+        return jsonify({'error': f'Failed to delete documents: {str(e)}'}), 500
+
+@app.route('/api/documents/<int:doc_id>/reprocess', methods=['POST'])
+def reprocess_document(doc_id):
+    """Reprocess a document with new settings"""
+    try:
+        # Find document
+        doc = next((d for d in documents if d['id'] == doc_id), None)
+        if not doc:
+            return jsonify({'error': 'Document not found'}), 404
+        
+        # Get processing options
+        data = request.get_json() or {}
+        
+        # Update document status
+        doc['status'] = 'Processing'
+        
+        # In a real implementation, you would:
+        # 1. Re-extract content with new settings
+        # 2. Re-chunk the document
+        # 3. Update embeddings
+        # 4. Update vector store
+        
+        # For now, simulate processing
+        import time
+        time.sleep(1)  # Simulate processing time
+        
+        # Update status
+        doc['status'] = 'Success'
+        doc['processed_at'] = datetime.now().isoformat()
+        
+        logger.info(f"Document {doc_id} reprocessed successfully")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Document "{doc["title"]}" queued for reprocessing',
+            'document_id': doc_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Document reprocessing error: {e}")
+        return jsonify({'error': f'Failed to reprocess document: {str(e)}'}), 500
+
+# Enhanced Chroma DB API endpoints
+@app.route('/api/chroma/search', methods=['POST'])
+def chroma_search():
+    """Search for similar documents using Chroma DB"""
+    if not CHROMA_ENABLED or not chroma_service:
+        return jsonify({'error': 'Chroma DB not available'}), 503
+    
+    try:
+        data = request.get_json()
+        query_text = data.get('query', '')
+        n_results = min(data.get('n_results', 5), 20)  # Limit to 20 results
+        document_filter = data.get('document_filter')
+        
+        if not query_text:
+            return jsonify({'error': 'Query text is required'}), 400
+        
+        # Generate embedding for query
+        query_embeddings = generate_embeddings([query_text])
+        if not query_embeddings:
+            return jsonify({'error': 'Failed to generate query embedding'}), 500
+        
+        # Search similar chunks
+        search_results = chroma_service.search_similar_chunks(
+            query_embedding=query_embeddings[0],
+            n_results=n_results,
+            document_filter=document_filter
+        )
+        
+        return jsonify({
+            'success': True,
+            'query': query_text,
+            'results': search_results
+        })
+        
+    except Exception as e:
+        logger.error(f"Chroma search failed: {e}")
+        return jsonify({'error': f'Search failed: {str(e)}'}), 500
+
+@app.route('/api/chroma/stats')
+def chroma_stats():
+    """Get Chroma DB collection statistics"""
+    if not CHROMA_ENABLED or not chroma_service:
+        return jsonify({'error': 'Chroma DB not available'}), 503
+    
+    try:
+        stats = chroma_service.get_collection_stats()
+        documents_list = chroma_service.list_all_documents()
+        
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'documents': documents_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get Chroma stats: {e}")
+        return jsonify({'error': f'Failed to get statistics: {str(e)}'}), 500
+
+@app.route('/api/chroma/document/<document_id>')
+def get_chroma_document_info(document_id):
+    """Get information about a specific document in Chroma DB"""
+    if not CHROMA_ENABLED or not chroma_service:
+        return jsonify({'error': 'Chroma DB not available'}), 503
+    
+    try:
+        doc_info = chroma_service.get_document_info(document_id)
+        return jsonify({
+            'success': True,
+            'document_info': doc_info
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get document info: {e}")
+        return jsonify({'error': f'Failed to get document info: {str(e)}'}), 500
+
+@app.route('/api/chroma/document/<document_id>', methods=['DELETE'])
+def delete_chroma_document(document_id):
+    """Delete a document from Chroma DB"""
+    if not CHROMA_ENABLED or not chroma_service:
+        return jsonify({'error': 'Chroma DB not available'}), 503
+    
+    try:
+        success = chroma_service.delete_document(document_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Document {document_id} deleted from Chroma DB'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Document {document_id} not found in Chroma DB'
+            }), 404
+        
+    except Exception as e:
+        logger.error(f"Failed to delete document: {e}")
+        return jsonify({'error': f'Failed to delete document: {str(e)}'}), 500
+
+@app.route('/api/document/formats')
+def get_supported_formats():
+    """Get list of supported document formats"""
+    formats = list(ALLOWED_EXTENSIONS)
+    
+    format_info = {}
+    if document_processor:
+        for fmt in formats:
+            format_info[fmt] = {
+                'supported': True,
+                'description': f'{fmt.upper()} document format'
+            }
+    
+    return jsonify({
+        'success': True,
+        'supported_formats': formats,
+        'format_info': format_info,
+        'chroma_enabled': CHROMA_ENABLED,
+        'rag_enabled': RAG_ENABLED
+    })
 
 @app.route('/api/weather')
 def get_weather():

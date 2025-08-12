@@ -95,7 +95,7 @@ docker-compose -f docker-compose.test.yml up --build
 
 # 접속
 # Frontend: http://localhost:3000
-# Backend: http://localhost:5001
+# Backend: http://localhost:5000
 ```
 
 ### 개발 환경 (Hot Reload)

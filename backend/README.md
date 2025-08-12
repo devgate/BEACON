@@ -36,8 +36,8 @@ cd ../deploy/dev
 docker-compose -f docker-compose.test.yml up --build
 
 # 접속
-# Backend API: http://localhost:5001
-# Health Check: http://localhost:5001/api/weather
+# Backend API: http://localhost:5000
+# Health Check: http://localhost:5000/api/weather
 ```
 
 ### Docker 빌드 및 푸시
