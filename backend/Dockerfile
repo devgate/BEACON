@@ -13,11 +13,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 애플리케이션 코드 복사
-COPY app.py .
-COPY bedrock_service.py .
-COPY vector_store.py .
-COPY rag_engine.py .
-COPY uploads/ ./uploads/
+COPY . /app
+
 
 # uploads 디렉토리 권한 설정
 RUN mkdir -p uploads static/images && \
