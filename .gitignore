@@ -220,3 +220,7 @@ crash.*.log
 .vite/
 dist/
 node_modules/
+
+# Chroma DB 
+*.sqlite3
+*.bin
