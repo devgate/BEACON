@@ -296,6 +296,55 @@ class ChromaService:
         except Exception as e:
             logger.error(f"Failed to get collection stats: {str(e)}")
             return {"total_chunks": 0, "total_documents": 0}
+    
+    def clear_collection(self) -> bool:
+        """
+        Clear all documents from the collection (for testing purposes)
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get all document IDs
+            all_results = self.collection.get(include=[])
+            
+            if all_results["ids"]:
+                # Delete all documents
+                self.collection.delete(ids=all_results["ids"])
+                logger.info(f"Cleared {len(all_results['ids'])} documents from collection")
+                return True
+            else:
+                logger.info("Collection is already empty")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to clear collection: {str(e)}")
+            return False
+    
+    def reset_collection(self) -> bool:
+        """
+        Reset the collection by deleting and recreating it
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Delete existing collection
+            self.client.delete_collection("documents")
+            logger.info("Deleted existing collection")
+            
+            # Recreate collection
+            self.collection = self.client.get_or_create_collection(
+                name="documents",
+                metadata={"description": "Document embeddings for RAG system"}
+            )
+            logger.info("Created new empty collection")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reset collection: {str(e)}")
+            return False
 
 
 class DocumentChunker:

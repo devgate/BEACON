@@ -11,8 +11,8 @@ from pathlib import Path
 
 # Document processing imports
 import PyPDF2
-# from docx import Document  # Commented out to avoid dependency issues
-# import openpyxl
+from docx import Document  # Enable DOCX support
+import openpyxl
 import json
 import csv
 from io import StringIO
@@ -31,10 +31,10 @@ class DocumentProcessor:
         self.supported_formats = {
             '.pdf': self._extract_pdf_text,
             '.txt': self._extract_txt_text,
-            # '.docx': self._extract_docx_text,  # Commented out
-            # '.doc': self._extract_docx_text,  # Commented out
-            # '.xlsx': self._extract_xlsx_text,  # Commented out
-            # '.xls': self._extract_xlsx_text,  # Commented out
+            '.docx': self._extract_docx_text,  # Enable DOCX support
+            '.doc': self._extract_docx_text,   # Enable DOC support
+            '.xlsx': self._extract_xlsx_text,  # Enable Excel support
+            '.xls': self._extract_xlsx_text,   # Enable Excel support
             '.csv': self._extract_csv_text,
             '.json': self._extract_json_text,
             '.md': self._extract_txt_text,  # Markdown as text
@@ -139,12 +139,96 @@ class DocumentProcessor:
             raise
     
     def _extract_docx_text(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
-        """Extract text from DOCX file - Not implemented to avoid dependency"""
-        raise NotImplementedError("DOCX extraction not available - missing dependency")
+        """Extract text from DOCX file"""
+        try:
+            doc = Document(file_path)
+            text_parts = []
+            
+            # Extract text from paragraphs
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_parts.append(paragraph.text)
+            
+            # Extract text from tables
+            table_texts = []
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = []
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            row_text.append(cell.text.strip())
+                    if row_text:
+                        table_texts.append(' | '.join(row_text))
+            
+            if table_texts:
+                text_parts.extend(table_texts)
+            
+            extracted_text = '\n\n'.join(text_parts)
+            
+            metadata = {
+                'paragraph_count': len(doc.paragraphs),
+                'table_count': len(doc.tables),
+                'has_tables': len(doc.tables) > 0,
+                'estimated_words': len(extracted_text.split()) if extracted_text else 0
+            }
+            
+            return extracted_text, metadata
+            
+        except Exception as e:
+            logger.error(f"DOCX extraction failed: {str(e)}")
+            raise
     
     def _extract_xlsx_text(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
-        """Extract text from Excel file - Not implemented to avoid dependency"""
-        raise NotImplementedError("Excel extraction not available - missing dependency")
+        """Extract text from Excel file"""
+        try:
+            workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            text_parts = []
+            worksheet_info = []
+            
+            for sheet_name in workbook.sheetnames:
+                worksheet = workbook[sheet_name]
+                sheet_text_parts = []
+                
+                # Add sheet header
+                sheet_text_parts.append(f"=== {sheet_name} ===")
+                
+                row_count = 0
+                for row in worksheet.iter_rows():
+                    row_values = []
+                    for cell in row:
+                        if cell.value is not None:
+                            row_values.append(str(cell.value))
+                    
+                    if row_values and any(val.strip() for val in row_values):
+                        sheet_text_parts.append(' | '.join(row_values))
+                        row_count += 1
+                    
+                    # Limit rows for very large files
+                    if row_count > 1000:
+                        sheet_text_parts.append("... (truncated, too many rows)")
+                        break
+                
+                if sheet_text_parts and len(sheet_text_parts) > 1:  # More than just header
+                    text_parts.extend(sheet_text_parts)
+                    worksheet_info.append({
+                        'name': sheet_name,
+                        'rows_processed': row_count
+                    })
+            
+            extracted_text = '\n\n'.join(text_parts)
+            
+            metadata = {
+                'worksheet_count': len(workbook.sheetnames),
+                'worksheets_processed': len(worksheet_info),
+                'worksheet_info': worksheet_info
+            }
+            
+            workbook.close()
+            return extracted_text, metadata
+            
+        except Exception as e:
+            logger.error(f"Excel extraction failed: {str(e)}")
+            raise
     
     def _extract_csv_text(self, file_path: str) -> Tuple[str, Dict[str, Any]]:
         """Extract text from CSV file"""

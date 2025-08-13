@@ -480,6 +480,7 @@ def chat():
     Enhanced chat API endpoint with Bedrock RAG integration
     Supports model selection, cost tracking, and real AI responses
     """
+    logger.info("📞 Chat API 호출됨 - 요청 데이터 처리 시작")
     data = request.get_json()
     user_message = data.get('message', '')
     selected_category_id = data.get('category_id', None)
@@ -494,25 +495,33 @@ def chat():
     top_k_documents = int(settings.get('top_k_documents', 5))
     
     try:
+        logger.info("🔍 RAG_ENABLED 상태: %s", RAG_ENABLED)
         if RAG_ENABLED:
             # Check if ChromaDB RAG should be used (when knowledge_base_id is provided)
+            logger.info("🔍 RAG 조건 체크: use_rag=%s, knowledge_base_id=%s, CHROMA_ENABLED=%s, chroma_service=%s", 
+                       use_rag, knowledge_base_id, CHROMA_ENABLED, chroma_service is not None)
             use_chroma_rag = use_rag and knowledge_base_id and CHROMA_ENABLED and chroma_service
+            logger.info("🎯 ChromaDB RAG 사용 여부: %s", use_chroma_rag)
             
             if use_chroma_rag:
                 # Use ChromaDB RAG system
-                logger.info(f"Processing ChromaDB RAG query: {user_message[:50]}... with knowledge base: {knowledge_base_id}")
+                logger.info("=== RAG 질문 처리 시작 ===")
+                logger.info("1. ✅ 질문 입력: %s", user_message[:50] + "..." if len(user_message) > 50 else user_message)
                 
                 import time
                 start_time = time.time()
                 
                 # Generate embedding for the user query
+                logger.info("2. 🔄 질문 Bedrock 임베딩 생성 시작")
                 query_embeddings = generate_embeddings([user_message])
                 if not query_embeddings or len(query_embeddings) == 0:
                     raise Exception("Failed to generate query embedding")
                 
                 query_embedding = query_embeddings[0]
+                logger.info("2. ✅ 질문 Bedrock 임베딩 생성 완료")
                 
                 # Search similar chunks in ChromaDB filtered by knowledge base
+                logger.info("3. 🔄 ChromaDB 유사도 검색 시작 - 지식베이스: %s", knowledge_base_id)
                 search_results = chroma_service.search_similar_chunks(
                     query_embedding=query_embedding,
                     n_results=top_k_documents,
@@ -521,11 +530,14 @@ def chat():
                 
                 # Check if we found relevant documents
                 if search_results['total_results'] > 0:
+                    logger.info("3. ✅ ChromaDB 유사도 검색 완료 - %d개 관련 청크 발견", search_results['total_results'])
+                    
                     # Build context from retrieved chunks
                     context_chunks = search_results['chunks']
                     metadatas = search_results['metadatas']
                     distances = search_results['distances']
                     
+                    logger.info("4. 🔄 검색된 청크로 LLM 컨텍스트 구성 시작")
                     # Format context for LLM
                     context = "\n\n".join([
                         f"문서 '{meta.get('document_name', 'Unknown')}' - 관련도: {1-distance:.3f}\n{chunk}"
@@ -567,6 +579,9 @@ def chat():
 4. 가능한 구체적이고 상세한 답변을 제공해주세요
 5. 관련된 문서 섹션이나 내용을 인용할 때는 해당 문서명을 언급해주세요"""
                     
+                    logger.info("4. ✅ LLM 컨텍스트 구성 완료")
+                    logger.info("5. 🔄 Bedrock LLM 응답 생성 시작 - 모델: %s", model_id)
+                    
                     # Generate response using Bedrock with context
                     response_data = bedrock_service.invoke_model(
                         model_id=model_id,
@@ -575,6 +590,8 @@ def chat():
                         max_tokens=max_tokens,
                         temperature=temperature
                     )
+                    
+                    logger.info("5. ✅ Bedrock LLM 응답 생성 완료")
                     
                     processing_time = time.time() - start_time
                     
@@ -603,6 +620,7 @@ def chat():
                         'sources_count': len(context_chunks)
                     }
                     chat_history.append(chat_entry)
+                    logger.info("6. ✅ 사용자에게 답변 전송 완료")
                     
                     return jsonify({
                         'response': response_data['text'],
@@ -683,6 +701,7 @@ def chat():
                         'sources_count': 0
                     }
                     chat_history.append(chat_entry)
+                    logger.info("6. ✅ 사용자에게 답변 전송 완료 (문서 없음 - 일반 응답)")
                     
                     return jsonify({
                         'response': response_data['text'],
@@ -746,6 +765,7 @@ def chat():
                     'sources_count': len(response_data.sources)
                 }
                 chat_history.append(chat_entry)
+                logger.info("6. ✅ 사용자에게 답변 전송 완료 (RAG 비활성화)")
                 
                 return jsonify({
                     'response': response_data.response,
@@ -818,6 +838,7 @@ def chat():
                     'sources_count': 0
                 }
                 chat_history.append(chat_entry)
+                logger.info("6. ✅ 사용자에게 답변 전송 완료 (이미지 포함)")
                 
                 return jsonify({
                     'response': response_data['text'],
@@ -832,8 +853,8 @@ def chat():
                     'rag_enabled': False
                 })
         else:
-            # Fallback to mock responses when Bedrock not available
-            logger.info("Using mock/fallback response system")
+            # RAG_ENABLED is False - fallback to mock responses
+            logger.warning("❌ RAG_ENABLED가 False입니다 - Mock 응답 시스템 사용")
             return _generate_mock_response(user_message, selected_category_id)
             
     except Exception as e:
@@ -954,6 +975,7 @@ def _generate_mock_response(user_message: str, category_id: Optional[int] = None
         'ai_response': response
     }
     chat_history.append(chat_entry)
+    logger.info("6. ✅ 사용자에게 답변 전송 완료 (기본 채팅)")
     
     return jsonify({
         'response': response,
@@ -1180,19 +1202,48 @@ def upload_file():
 def get_chat_history():
     return jsonify(chat_history)
 
-@app.route('/api/download/<int:doc_id>')
+@app.route('/api/download/<doc_id>')
 def download_file(doc_id):
     """
-    업로드된 PDF 파일 다운로드 엔드포인트
+    업로드된 파일 다운로드 엔드포인트
     
     Args:
-        doc_id (int): 다운로드할 문서의 ID
+        doc_id (str): 다운로드할 문서의 ID (문자열)
         
     Returns:
         파일 또는 에러 메시지
     """
-    # 문서 ID로 해당 문서 검색
-    doc = next((d for d in documents if d['id'] == doc_id), None)
+    logger.info(f"Download request for doc_id: {doc_id}")
+    
+    # ChromaDB에서 문서 정보 가져오기
+    try:
+        doc_info = chroma_service.get_document_info(doc_id)
+        if not doc_info.get('exists'):
+            logger.warning(f"Document not found in ChromaDB: {doc_id}")
+            return jsonify({'error': '문서를 찾을 수 없습니다.'}), 404
+        
+        # 원본 파일 경로 구성 (업로드 시 저장된 경로)
+        uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+        file_path = os.path.join(uploads_dir, f"{doc_id}.txt")
+        
+        # 파일이 존재하는지 확인
+        if os.path.exists(file_path):
+            logger.info(f"Serving file: {file_path}")
+            return send_file(
+                file_path,
+                as_attachment=True,
+                download_name=f"{doc_id}.txt"
+            )
+        else:
+            logger.error(f"File not found on disk: {file_path}")
+            return jsonify({'error': '파일이 디스크에 존재하지 않습니다.'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error in download_file: {e}")
+        return jsonify({'error': f'다운로드 오류: {str(e)}'}), 500
+    
+    # 기존 documents 배열에서도 검색 (fallback)
+    doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
     
     # 문서가 존재하지 않거나 파일 경로가 없는 경우
     if not doc or not doc.get('file_path'):
@@ -1416,10 +1467,16 @@ def upload_to_knowledge_base():
         chunks_added = 0
         if CHROMA_ENABLED and chroma_service and content.strip():
             try:
+                logger.info("=== RAG 준비단계 시작 ===")
+                logger.info("1. ✅ 파일 업로드 완료")
+                logger.info("2. ✅ 텍스트 추출 완료 - %d 문자 추출", len(content))
+                
                 # Get processing parameters
                 chunk_strategy = request.form.get('chunking_strategy', 'sentence')
                 chunk_size = int(request.form.get('chunk_size', 1000))
                 chunk_overlap = int(request.form.get('chunk_overlap', 100))
+                
+                logger.info("3. 🔄 청크 분할 시작 - 전략: %s, 크기: %d", chunk_strategy, chunk_size)
                 
                 # Generate chunks using DocumentChunker
                 if DocumentChunker:
@@ -1452,10 +1509,15 @@ def upload_to_knowledge_base():
                     if current_chunk:
                         chunks.append(current_chunk.strip())
                 
+                logger.info("3. ✅ 청크 분할 완료 - %d개 청크 생성", len(chunks))
+                
                 # Generate embeddings
+                logger.info("4. 🔄 Bedrock 임베딩 생성 시작 - %d개 청크", len(chunks))
                 embeddings = generate_embeddings(chunks)
+                logger.info("4. ✅ Bedrock 임베딩 생성 완료")
                 
                 # Store in Chroma DB
+                logger.info("5. 🔄 ChromaDB 저장 시작")
                 document_id = f"kb_{index_id}_doc_{new_doc['id']}"
                 success = chroma_service.add_document_chunks(
                     chunks=chunks,
@@ -1475,9 +1537,11 @@ def upload_to_knowledge_base():
                 if success:
                     chunks_added = len(chunks)
                     new_doc['chunk_count'] = len(chunks)
-                    logger.info(f"Added {chunks_added} chunks to ChromaDB for document {new_doc['id']}")
+                    logger.info("5. ✅ ChromaDB 저장 완료 - %d개 청크 저장", chunks_added)
+                    logger.info("=== RAG 준비단계 완료 ===")
                 else:
-                    logger.error("Failed to add chunks to ChromaDB")
+                    logger.error("5. ❌ ChromaDB 저장 실패")
+                    logger.error("=== RAG 준비단계 실패 ===")
                     
             except Exception as e:
                 logger.error(f"Failed to add document to ChromaDB: {e}")
@@ -1761,6 +1825,66 @@ def get_weather():
         'condition': '흐림',
         'range': '5°C/-1°C'
     })
+
+@app.route('/api/chroma/clear', methods=['POST'])
+def clear_chroma():
+    """Clear all documents from ChromaDB collection"""
+    try:
+        if chroma_service.clear_collection():
+            logger.info("ChromaDB collection cleared successfully")
+            return jsonify({
+                'success': True,
+                'message': 'ChromaDB collection cleared successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to clear ChromaDB collection'
+            }), 500
+    except Exception as e:
+        logger.error(f"Error clearing ChromaDB: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error clearing ChromaDB: {str(e)}'
+        }), 500
+
+@app.route('/api/chroma/reset', methods=['POST'])
+def reset_chroma():
+    """Reset ChromaDB collection by deleting and recreating it"""
+    try:
+        if chroma_service.reset_collection():
+            logger.info("ChromaDB collection reset successfully")
+            return jsonify({
+                'success': True,
+                'message': 'ChromaDB collection reset successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to reset ChromaDB collection'
+            }), 500
+    except Exception as e:
+        logger.error(f"Error resetting ChromaDB: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error resetting ChromaDB: {str(e)}'
+        }), 500
+
+@app.route('/api/chroma/stats', methods=['GET'])
+def get_chroma_stats():
+    """Get ChromaDB collection statistics"""
+    try:
+        stats = chroma_service.get_collection_stats()
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+    except Exception as e:
+        logger.error(f"Error getting ChromaDB stats: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error getting ChromaDB stats: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
