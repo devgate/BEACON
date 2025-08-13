@@ -122,6 +122,20 @@
   transform: translateY(0);
 }
 
+.btn-add-document:disabled {
+  background: #374151;
+  color: #6b7280;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-add-document:disabled:hover {
+  background: #374151;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Knowledge Base Modal */
 .kb-modal-overlay {
   position: fixed;
@@ -662,6 +676,19 @@
   justify-content: center;
   background: rgba(0, 212, 255, 0.1);
   color: #00d4ff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 20px;
+  height: 20px;
+}
+
+.document-count-hidden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;

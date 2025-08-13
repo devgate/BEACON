@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { documentService } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -111,6 +111,7 @@ const RAGManagerPage = () => {
     date: doc.uploaded_at || doc.created_at || new Date().toISOString().slice(0, 16).replace('T', ' '),
     status: doc.status || 'Success',
     chunks: doc.chunk_count || Math.floor(Math.random() * 10) + 1, // Calculate actual chunks if available
+    index_id: doc.index_id, // Preserve index_id for filtering
     originalDoc: doc
   }));
 
@@ -184,12 +185,12 @@ const RAGManagerPage = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       if (documents.some(doc => doc.status === 'Processing')) {
-        loadDocumentsByIndex(selectedIndexId);
+        loadAllDocuments();
       }
     }, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
-  }, [documents, selectedIndexId]);
+  }, [documents]);
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -198,10 +199,8 @@ const RAGManagerPage = () => {
       const kbResponse = await documentService.getKnowledgeBases();
       setKnowledgeBases(kbResponse.knowledge_bases || []);
       
-      // Load documents for selected index
-      if (selectedIndexId) {
-        await loadDocumentsByIndex(selectedIndexId);
-      }
+      // Load all documents from all indexes
+      await loadAllDocuments();
     } catch (error) {
       console.error('Failed to load initial data:', error);
     } finally {
@@ -209,19 +208,63 @@ const RAGManagerPage = () => {
     }
   };
 
+  // Load all documents from all indexes to maintain counts
+  const loadAllDocuments = async () => {
+    try {
+      const allDocs = [];
+      
+      // Get all knowledge bases
+      const kbResponse = await documentService.getKnowledgeBases();
+      const knowledgeBases = kbResponse.knowledge_bases || [];
+      
+      // Load documents for each knowledge base
+      for (const kb of knowledgeBases) {
+        try {
+          const response = await documentService.getDocumentsByIndex(kb.id);
+          const docs = response.documents || [];
+          allDocs.push(...docs);
+        } catch (error) {
+          console.error(`Failed to load documents for index ${kb.id}:`, error);
+        }
+      }
+      
+      setDocuments(allDocs);
+      
+      // Update statistics for currently selected index
+      if (selectedIndexId) {
+        const currentIndexDocs = allDocs.filter(doc => doc.index_id === selectedIndexId);
+        updateDocumentStats(currentIndexDocs);
+      }
+    } catch (error) {
+      console.error('Failed to load all documents:', error);
+      setDocuments([]);
+      setDocumentStats({ total: 0, processing: 0, completed: 0, failed: 0 });
+    }
+  };
+
   const loadDocumentsByIndex = async (indexId) => {
     try {
       setLoading(true);
-      const response = await documentService.getDocumentsByIndex(indexId);
-      const docs = response.documents || [];
-      setDocuments(docs);
+      // Only update statistics for the selected index, don't replace documents array
+      const currentIndexDocs = documents.filter(doc => doc.index_id === indexId);
+      updateDocumentStats(currentIndexDocs);
       
-      // Update statistics
-      updateDocumentStats(docs);
+      // If no documents found for this index, try to load from server
+      if (currentIndexDocs.length === 0) {
+        const response = await documentService.getDocumentsByIndex(indexId);
+        const docs = response.documents || [];
+        
+        // Add new documents to the existing array instead of replacing
+        setDocuments(prevDocs => {
+          const filteredPrevDocs = prevDocs.filter(doc => doc.index_id !== indexId);
+          return [...filteredPrevDocs, ...docs];
+        });
+        
+        updateDocumentStats(docs);
+      }
     } catch (error) {
       console.error('Failed to load documents for index:', error);
-      setDocuments([]);
-      setDocumentStats({ total: 0, processing: 0, completed: 0, failed: 0 });
+      updateDocumentStats([]);
     } finally {
       setLoading(false);
     }
@@ -705,9 +748,24 @@ const RAGManagerPage = () => {
   };
 
 
-  const filteredData = processedDocuments.filter(doc => 
-    doc.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter documents by selected index and search query
+  const filteredData = useMemo(() => {
+    if (!selectedIndexId) {
+      // If no index is selected, show all documents filtered by search
+      return processedDocuments.filter(doc => 
+        doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Filter by both selected index and search query
+    const filtered = processedDocuments.filter(doc => {
+      const matchesIndex = doc.index_id === selectedIndexId;
+      const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesIndex && matchesSearch;
+    });
+    
+    return filtered;
+  }, [processedDocuments, selectedIndexId, searchQuery]);
 
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0';
@@ -1294,85 +1352,20 @@ const RAGManagerPage = () => {
       default:
         return (
           <div className="file-manager-content">
-            {/* Add Document Button */}
-            <div className="file-manager-header">
-              <button 
-                className="btn-add-document"
-                onClick={() => setShowUploadModal(true)}
-              >
-                <FontAwesomeIcon icon={faPlus} /> Add Document
-              </button>
-            </div>
-
-            {/* Upload Progress Section */}
-            {Object.keys(uploadProgress).length > 0 && (
-              <div className="upload-progress-section">
-                <div className="upload-progress-header">
-                  <div className="upload-progress-title">
-                    <FontAwesomeIcon icon={faCloudUploadAlt} />
-                    Upload Progress ({Object.keys(uploadProgress).length})
-                  </div>
-                  <button 
-                    className="btn-clear-uploads"
-                    onClick={clearCompletedUploads}
-                    title="Clear completed uploads"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="upload-items">
-                  {Object.entries(uploadProgress).map(([uploadId, upload]) => (
-                    <div key={uploadId} className="upload-item">
-                      <FontAwesomeIcon 
-                        icon={
-                          upload.status === 'uploading' ? faSpinner :
-                          upload.status === 'success' ? faCheckCircle :
-                          faExclamationCircle
-                        }
-                        className={`upload-item-icon ${upload.status}`}
-                      />
-                      <div className="upload-item-info">
-                        <div className="upload-item-name" title={upload.fileName}>
-                          {upload.fileName}
-                        </div>
-                        <div className="upload-item-status">
-                          {upload.status === 'uploading' ? `Uploading... ${upload.progress}%` :
-                           upload.status === 'success' ? 'Upload completed' :
-                           upload.error || 'Upload failed'}\n                        </div>
-                      </div>
-                      {upload.status === 'uploading' && (
-                        <div className="upload-progress-bar">
-                          <div 
-                            className="upload-progress-fill" 
-                            style={{ width: `${upload.progress}%` }}
-                          />
-                        </div>
-                      )}
-                      <div className="upload-item-actions">
-                        {upload.status === 'uploading' && (
-                          <button 
-                            className="btn-upload-cancel"
-                            onClick={() => cancelUpload(uploadId)}
-                            title="Cancel upload"
-                          >
-                            <FontAwesomeIcon icon={faTimes} />
-                          </button>
-                        )}
-                        {upload.status === 'error' && (
-                          <button 
-                            className="btn-upload-retry"
-                            onClick={() => retryUpload(uploadId)}
-                            title="Retry upload"
-                          >
-                            <FontAwesomeIcon icon={faSync} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* Add Document Button - Only show when files exist */}
+            {filteredData.length > 0 && (
+              <div className="file-manager-header">
+                <button 
+                  className="btn-add-document"
+                  onClick={() => setShowUploadModal(true)}
+                  disabled={!selectedIndexId}
+                  title={!selectedIndexId ? "Please select a knowledge base first" : "Add document to selected knowledge base"}
+                >
+                  <FontAwesomeIcon icon={faPlus} /> Add Document
+                </button>
               </div>
             )}
+
 
             {/* Bulk Actions Bar */}
             {selectedDocuments.length > 0 && (
@@ -1397,7 +1390,7 @@ const RAGManagerPage = () => {
               </div>
             )}
 
-            {filteredData.length === 0 && Object.keys(uploadProgress).length === 0 ? (
+            {filteredData.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-content">
                   <FontAwesomeIcon icon={faFileAlt} className="empty-icon" />
@@ -1406,13 +1399,15 @@ const RAGManagerPage = () => {
                   <button 
                     className="btn-upload-primary"
                     onClick={() => setShowUploadModal(true)}
+                    disabled={!selectedIndexId}
+                    title={!selectedIndexId ? "Please select a knowledge base first" : "Upload files to selected knowledge base"}
                   >
                     <FontAwesomeIcon icon={faPlus} />
                     Upload Files
                   </button>
                 </div>
               </div>
-            ) : filteredData.length > 0 && (
+            ) : (
               <div className="document-table">
                 <table>
                   <thead>

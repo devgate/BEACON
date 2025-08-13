@@ -204,9 +204,61 @@ const ChatPage = () => {
           </div>
           
           {/* 소스 선택 드롭다운 */}
-     
-        
-         
+          
+          <div className="source-section">
+            <div className="source-header">
+              <h4>Source</h4>
+              <div className="source-status">
+                <FontAwesomeIcon icon={faFileAlt} className="status-icon" />
+                <span className="status-text">선택 가능</span>
+              </div>
+            </div>
+            <div className="source-dropdown-wrapper">
+              <div className="source-trigger">
+                <div className="trigger-content">
+                  <FontAwesomeIcon icon={faFileAlt} className="source-icon" />
+                  <div className="selected-info">
+                    <span className="selected-name">
+                      {selectedSource ? 
+                        (selectedSource.startsWith('kb_') ? 
+                          knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.name || '문서' :
+                          selectedSource.startsWith('doc_') ? 
+                            uploadedFiles.find(f => f.id === selectedSource.replace('doc_', ''))?.file_name || '문서' :
+                            '웹 검색'
+                        ) : 
+                        '소스 선택'
+                      }
+                    </span>
+                    {selectedSource && (
+                      <span className="selected-description">
+                        {selectedSource.startsWith('kb_') ? '문서' : 
+                         selectedSource.startsWith('doc_') ? 'PDF 문서' : '온라인 검색'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <select 
+                className="source-select"
+                value={selectedSource}
+                onChange={(e) => setSelectedSource(e.target.value)}
+              >
+                <option value="">소스를 선택하세요</option>
+                <optgroup label="문서">
+                  {knowledgeBases.length > 0 ? (
+                    knowledgeBases.map(kb => (
+                      <option key={kb.id} value={`kb_${kb.id}`}>
+                        {kb.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>문서가 없습니다</option>
+                  )}
+                </optgroup>
+              </select>
+            </div>
+          </div>
+
         </aside>
 
         <main className="chat-area">
