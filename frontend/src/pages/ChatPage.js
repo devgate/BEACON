@@ -22,25 +22,21 @@ const ChatPage = () => {
     loadUploadedFiles();
     loadKnowledgeBases();
 
-    // Listen for localStorage changes (when RAG Manager updates knowledge list)
-    const handleStorageChange = (e) => {
-      if (e.key === 'ragManager_indexList') {
-        loadKnowledgeBases();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Also listen for custom events in case both tabs are on the same origin
+    // Listen for custom events when RAG Manager updates knowledge list
     const handleKnowledgeListUpdate = () => {
       loadKnowledgeBases();
     };
 
     window.addEventListener('knowledgeListUpdated', handleKnowledgeListUpdate);
 
+    // Refresh knowledge bases periodically to stay in sync with server
+    const refreshInterval = setInterval(() => {
+      loadKnowledgeBases();
+    }, 30000); // Refresh every 30 seconds
+
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('knowledgeListUpdated', handleKnowledgeListUpdate);
+      clearInterval(refreshInterval);
     };
   }, []);
 
@@ -80,38 +76,25 @@ const ChatPage = () => {
 
   const loadKnowledgeBases = async () => {
     try {
-      // First try to get from localStorage (RAG Manager data)
-      const storedIndexList = localStorage.getItem('ragManager_indexList');
-      if (storedIndexList) {
-        const indexList = JSON.parse(storedIndexList);
-        setKnowledgeBases(indexList);
-        return;
-      }
-
-      // If no localStorage data, try API
+      // Always get from API to ensure consistency with server
       const response = await documentService.getKnowledgeBases();
       if (response && response.knowledge_bases) {
-        setKnowledgeBases(response.knowledge_bases);
+        // Convert to the format expected by the dropdown
+        const formattedKnowledgeBases = response.knowledge_bases.map(kb => ({
+          id: kb.id,
+          name: kb.name,
+          status: kb.status || 'active',
+          document_count: kb.document_count || 0
+        }));
+        setKnowledgeBases(formattedKnowledgeBases);
       } else {
-        // If API doesn't return data, use the default list
-        const defaultKnowledgeBases = [
-          { id: 'skshieldus_test', name: 'test', status: 'active' },
-          { id: 'skshieldus_poc_test_jji_p', name: 'SK 쉴더스 - Test -JJI - 비정형(PDF)', status: 'active' },
-          { id: 'skshieldus_poc_callcenter', name: 'SK쉴더스-고객센터', status: 'active' },
-          { id: 'skshieldus_poc_v2', name: 'SK 쉴더스 - 비정형(PDF)', status: 'active' }
-        ];
-        setKnowledgeBases(defaultKnowledgeBases);
+        console.warn('No knowledge bases returned from API');
+        setKnowledgeBases([]);
       }
     } catch (error) {
       console.error('Failed to load knowledge bases:', error);
-      // Use default list on error
-      const defaultKnowledgeBases = [
-        { id: 'skshieldus_test', name: 'test', status: 'active' },
-        { id: 'skshieldus_poc_test_jji_p', name: 'SK 쉴더스 - Test -JJI - 비정형(PDF)', status: 'active' },
-        { id: 'skshieldus_poc_callcenter', name: 'SK쉴더스-고객센터', status: 'active' },
-        { id: 'skshieldus_poc_v2', name: 'SK 쉴더스 - 비정형(PDF)', status: 'active' }
-      ];
-      setKnowledgeBases(defaultKnowledgeBases);
+      // Clear the list on error rather than using stale data
+      setKnowledgeBases([]);
     }
   };
 

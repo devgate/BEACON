@@ -164,9 +164,10 @@ export const documentService = {
     return response.data;
   },
 
-  async createKnowledgeBase(name, description, settings = {}) {
+  async createKnowledgeBase(name, id, description = '', settings = {}) {
     const response = await api.post('/knowledge', {
       name,
+      id,
       description,
       settings
     });

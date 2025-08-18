@@ -115,26 +115,8 @@ const RAGManagerPage = () => {
     originalDoc: doc
   }));
 
-  // Index list with dynamic document counts (now using state with localStorage persistence)
-  const getInitialIndexList = () => {
-    try {
-      const stored = localStorage.getItem('ragManager_indexList');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (error) {
-      console.error('Error loading stored index list:', error);
-    }
-    // Default data if nothing stored or error occurs
-    return [
-      { id: 'skshieldus_test', name: 'test', status: 'active' },
-      { id: 'skshieldus_poc_test_jji_p', name: 'SK 쉴더스 - Test -JJI - 비정형(PDF)', status: 'active' },
-      { id: 'skshieldus_poc_callcenter', name: 'SK쉴더스-고객센터', status: 'active', selected: true },
-      { id: 'skshieldus_poc_v2', name: 'SK 쉴더스 - 비정형(PDF)', status: 'active' }
-    ];
-  };
-
-  const [indexList, setIndexList] = useState(getInitialIndexList);
+  // Index list from server
+  const [indexList, setIndexList] = useState([]);
 
   // Get document count for each index
   const getDocumentCount = (indexId) => {
@@ -160,15 +142,9 @@ const RAGManagerPage = () => {
     setCurrentKnowledgePage(page);
   };
 
-  // Save indexList to localStorage whenever it changes
+  // Dispatch event when indexList changes to notify other components
   useEffect(() => {
-    try {
-      localStorage.setItem('ragManager_indexList', JSON.stringify(indexList));
-      // Dispatch custom event to notify other components/pages
-      window.dispatchEvent(new CustomEvent('knowledgeListUpdated', { detail: indexList }));
-    } catch (error) {
-      console.error('Error saving index list:', error);
-    }
+    window.dispatchEvent(new CustomEvent('knowledgeListUpdated', { detail: indexList }));
   }, [indexList]);
 
   useEffect(() => {
@@ -195,9 +171,26 @@ const RAGManagerPage = () => {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      // Load knowledge bases
+      // Load knowledge bases from server
       const kbResponse = await documentService.getKnowledgeBases();
-      setKnowledgeBases(kbResponse.knowledge_bases || []);
+      const knowledgeBases = kbResponse.knowledge_bases || [];
+      setKnowledgeBases(knowledgeBases);
+      
+      // Convert to indexList format
+      const indexes = knowledgeBases.map(kb => ({
+        id: kb.id,
+        name: kb.name,
+        status: kb.status || 'active',
+        description: kb.description
+      }));
+      setIndexList(indexes);
+      
+      // Set default selection if needed
+      if (indexes.length > 0 && !selectedIndexId) {
+        const defaultIndex = indexes.find(idx => idx.id === 'skshieldus_poc_callcenter') || indexes[0];
+        setSelectedIndexId(defaultIndex.id);
+        setSelectedIndex(defaultIndex.name);
+      }
       
       // Load all documents from all indexes
       await loadAllDocuments();
@@ -517,13 +510,37 @@ const RAGManagerPage = () => {
   const handleBulkDeleteDocs = async () => {
     if (selectedDocuments.length === 0) return;
     
+    if (!window.confirm(`정말로 ${selectedDocuments.length}개의 파일을 삭제하시겠습니까?`)) {
+      return;
+    }
+    
     try {
+      setLoading(true);
+      const deletedCount = selectedDocuments.length;
       await documentService.deleteMultipleDocuments(selectedDocuments);
-      await loadDocumentsByIndex(selectedIndexId);
+      
+      // Remove documents from local state immediately for instant UI update
+      setDocuments(prevDocs => prevDocs.filter(doc => !selectedDocuments.includes(doc.id)));
+      
+      // Clear selection
       setSelectedDocuments([]);
-      setNotification({ message: `${selectedDocuments.length} documents deleted successfully`, type: 'success' });
+      
+      // Reload all documents to ensure consistency with server
+      await loadAllDocuments();
+      
+      setNotification({ 
+        message: `${deletedCount}개의 파일이 성공적으로 삭제되었습니다.`, 
+        type: 'success' 
+      });
     } catch (error) {
-      setNotification({ message: 'Failed to delete documents', type: 'error' });
+      setNotification({ 
+        message: '파일 삭제에 실패했습니다: ' + error.message, 
+        type: 'error' 
+      });
+      // Reload documents to ensure UI consistency even on error
+      await loadAllDocuments();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -570,13 +587,28 @@ const RAGManagerPage = () => {
     try {
       setLoading(true);
       await documentService.deleteDocument(docId);
-      await loadDocumentsByIndex(selectedIndexId);
+      
+      // Remove the document from local state immediately for instant UI update
+      setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
       
       // Remove from selected documents if it was selected
       setSelectedDocuments(prev => prev.filter(id => id !== docId));
+      
+      // Then reload all documents to ensure consistency with server
+      await loadAllDocuments();
+      
+      setNotification({ 
+        message: '파일이 성공적으로 삭제되었습니다.', 
+        type: 'success' 
+      });
     } catch (error) {
       console.error('Failed to delete document:', error);
-      alert('파일 삭제에 실패했습니다: ' + error.message);
+      setNotification({ 
+        message: '파일 삭제에 실패했습니다: ' + error.message, 
+        type: 'error' 
+      });
+      // Reload documents to ensure UI consistency even on error
+      await loadAllDocuments();
     } finally {
       setLoading(false);
     }
@@ -621,22 +653,19 @@ const RAGManagerPage = () => {
 
     try {
       setLoading(true);
-      // Here you would typically call an API to create the knowledge base
-      // await documentService.createKnowledgeBase(newKBData.name, newKBData.id);
+      // Call API to create the knowledge base
+      const response = await documentService.createKnowledgeBase(newKBData.name, newKBData.id);
       
-      // For now, add to the local list immediately
-      const newKB = {
-        id: newKBData.id,
-        name: newKBData.name,
-        status: 'active'
-      };
-      setIndexList(prev => [...prev, newKB]);
-      
-      console.log('Creating new knowledge base:', newKBData);
-      
-      setShowNewKBModal(false);
-      setNewKBData({ name: '', id: '' });
-      setNotification({ message: '새 저장소가 생성되었습니다.', type: 'success' });
+      if (response.success) {
+        // Reload knowledge bases from server to ensure consistency
+        await loadInitialData();
+        
+        setShowNewKBModal(false);
+        setNewKBData({ name: '', id: '' });
+        setNotification({ message: '새 저장소가 생성되었습니다.', type: 'success' });
+      } else {
+        throw new Error(response.error || 'Failed to create knowledge base');
+      }
     } catch (error) {
       console.error('Failed to create knowledge base:', error);
       setNotification({ message: '저장소 생성에 실패했습니다: ' + error.message, type: 'error' });
@@ -665,26 +694,24 @@ const RAGManagerPage = () => {
 
     try {
       setLoading(true);
-      // Here you would typically call an API to update the knowledge base
-      // await documentService.updateKnowledgeBase(editKBData.id, { name: editKBData.name });
+      // Call API to update the knowledge base
+      const response = await documentService.updateKnowledgeBase(editKBData.id, { name: editKBData.name });
       
-      // Update the local list immediately
-      setIndexList(prev => prev.map(kb => 
-        kb.id === editKBData.id 
-          ? { ...kb, name: editKBData.name }
-          : kb
-      ));
-      
-      // Update selected index name if this is the currently selected one
-      if (selectedIndexId === editKBData.id) {
-        setSelectedIndex(editKBData.name);
+      if (response.success) {
+        // Reload knowledge bases from server to ensure consistency
+        await loadInitialData();
+        
+        // Update selected index name if this is the currently selected one
+        if (selectedIndexId === editKBData.id) {
+          setSelectedIndex(editKBData.name);
+        }
+        
+        setShowEditKBModal(false);
+        setEditKBData({ name: '', id: '' });
+        setNotification({ message: '저장소 정보가 수정되었습니다.', type: 'success' });
+      } else {
+        throw new Error(response.error || 'Failed to update knowledge base');
       }
-      
-      console.log('Updating knowledge base:', editKBData);
-      
-      setShowEditKBModal(false);
-      setEditKBData({ name: '', id: '' });
-      setNotification({ message: '저장소 정보가 수정되었습니다.', type: 'success' });
     } catch (error) {
       console.error('Failed to update knowledge base:', error);
       setNotification({ message: '저장소 수정에 실패했습니다: ' + error.message, type: 'error' });
@@ -714,27 +741,29 @@ const RAGManagerPage = () => {
 
     try {
       setLoading(true);
-      // Here you would typically call an API to delete the knowledge base
-      // await documentService.deleteKnowledgeBase(selectedIndexId);
+      // Call API to delete the knowledge base
+      const response = await documentService.deleteKnowledgeBase(selectedIndexId);
       
-      // Remove from the local list immediately
-      setIndexList(prev => prev.filter(kb => kb.id !== selectedIndexId));
-      
-      // Reset selection to first remaining item or default
-      const remainingKBs = indexList.filter(kb => kb.id !== selectedIndexId);
-      if (remainingKBs.length > 0) {
-        setSelectedIndexId(remainingKBs[0].id);
-        setSelectedIndex(remainingKBs[0].name);
+      if (response.success) {
+        // Reload knowledge bases from server
+        await loadInitialData();
+        
+        // Reset selection to first remaining item or default
+        const remainingKBs = indexList.filter(kb => kb.id !== selectedIndexId);
+        if (remainingKBs.length > 0) {
+          setSelectedIndexId(remainingKBs[0].id);
+          setSelectedIndex(remainingKBs[0].name);
+        } else {
+          // If no knowledge bases left, reset to defaults
+          setSelectedIndexId('');
+          setSelectedIndex('');
+          setDocuments([]);
+        }
+        
+        setNotification({ message: '저장소가 삭제되었습니다.', type: 'success' });
       } else {
-        // If no knowledge bases left, reset to defaults
-        setSelectedIndexId('');
-        setSelectedIndex('');
-        setDocuments([]);
+        throw new Error(response.error || 'Failed to delete knowledge base');
       }
-      
-      console.log('Deleting knowledge base:', selectedKB);
-      
-      setNotification({ message: '저장소가 삭제되었습니다.', type: 'success' });
     } catch (error) {
       console.error('Failed to delete knowledge base:', error);
       setNotification({ message: '저장소 삭제에 실패했습니다: ' + error.message, type: 'error' });

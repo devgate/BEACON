@@ -1281,9 +1281,16 @@ def delete_document(doc_id):
     
     try:
         # 파일 삭제 (존재하는 경우)
-        if doc_to_delete.get('file_path') and os.path.exists(doc_to_delete['file_path']):
-            os.remove(doc_to_delete['file_path'])
-            print(f"파일 삭제됨: {doc_to_delete['file_path']}")
+        logger.info(f"Attempting to delete document {doc_id}: {doc_to_delete.get('title', 'Unknown')}")
+        logger.info(f"File path in document: {doc_to_delete.get('file_path', 'No file path')}")
+        
+        if doc_to_delete.get('file_path'):
+            file_path = doc_to_delete['file_path']
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"✅ 파일 삭제 성공: {file_path}")
+            else:
+                logger.warning(f"⚠️ 파일이 존재하지 않음: {file_path}")
         
         # 이미지 디렉토리 삭제 (존재하는 경우)
         image_dir = os.path.join('static', 'images', f'doc_{doc_id}')
@@ -1297,12 +1304,41 @@ def delete_document(doc_id):
         if RAG_ENABLED:
             try:
                 rag_deleted_count = rag_engine.delete_document(str(doc_id))
-                logger.info(f"Deleted {rag_deleted_count} chunks from RAG system for document {doc_id}")
+                logger.info(f"Deleted {rag_deleted_count} chunks from legacy RAG system for document {doc_id}")
             except Exception as e:
-                logger.error(f"Failed to delete document from RAG system: {e}")
+                logger.error(f"Failed to delete document from legacy RAG system: {e}")
         
-        # 문서 목록에서 제거
-        documents = [d for d in documents if d['id'] != doc_id]
+        # Remove from ChromaDB if enabled
+        chroma_deleted = False
+        if CHROMA_ENABLED and chroma_service:
+            try:
+                # Try different ID formats that might have been used
+                possible_ids = [
+                    str(doc_id),  # Simple ID
+                    f"doc_{doc_id}",  # General upload format
+                ]
+                
+                # If document has index_id, also try knowledge base format
+                if doc_to_delete.get('index_id'):
+                    possible_ids.append(f"kb_{doc_to_delete['index_id']}_doc_{doc_id}")
+                
+                for chroma_id in possible_ids:
+                    try:
+                        deleted = chroma_service.delete_document(chroma_id)
+                        if deleted:
+                            logger.info(f"✅ Deleted document from ChromaDB with ID: {chroma_id}")
+                            chroma_deleted = True
+                            break
+                    except Exception as e:
+                        logger.debug(f"Failed to delete with ID {chroma_id}: {e}")
+                
+                if not chroma_deleted:
+                    logger.warning(f"⚠️ Document {doc_id} not found in ChromaDB with any tried ID format")
+            except Exception as e:
+                logger.error(f"Failed to delete document from ChromaDB: {e}")
+        
+        # 문서 목록에서 제거 (global 변수를 직접 수정)
+        documents[:] = [d for d in documents if d['id'] != doc_id]
         
         return jsonify({
             'success': True,
@@ -1314,54 +1350,122 @@ def delete_document(doc_id):
         print(f"문서 삭제 오류: {e}")
         return jsonify({'error': f'문서 삭제 중 오류가 발생했습니다: {str(e)}'}), 500
 
+# Store knowledge bases in memory (in production, use a database)
+# Initialize with default knowledge bases
+knowledge_bases_storage = [
+]
+
 # Knowledge Base Management APIs
 @app.route('/api/knowledge')
 def get_knowledge_bases():
     """Get list of knowledge bases"""
     try:
-        # Mock knowledge bases for now - in production, this would come from your vector store or database
-        knowledge_bases = [
-            {
-                'id': 'skshieldus_test',
-                'name': 'test',
-                'description': 'Test knowledge base',
-                'status': 'active',
-                'created_at': '2024-01-01T00:00:00Z',
-                'document_count': 0
-            },
-            {
-                'id': 'skshieldus_poc_test_jji_p',
-                'name': 'SK 쉴더스 - Test -JJI - 비정형(PDF)',
-                'description': 'Test knowledge base for JJI PDF documents',
-                'status': 'active',
-                'created_at': '2024-01-01T00:00:00Z',
-                'document_count': 0
-            },
-            {
-                'id': 'skshieldus_poc_callcenter',
-                'name': 'SK쉴더스-고객센터',
-                'description': 'SK Shieldus call center knowledge base',
-                'status': 'active',
-                'created_at': '2024-01-01T00:00:00Z',
-                'document_count': len([d for d in documents if d.get('index_id') == 'skshieldus_poc_callcenter'])
-            },
-            {
-                'id': 'skshieldus_poc_v2',
-                'name': 'SK 쉴더스 - 비정형(PDF)',
-                'description': 'SK Shieldus PDF documents knowledge base',
-                'status': 'active',
-                'created_at': '2024-01-01T00:00:00Z',
-                'document_count': 0
-            }
-        ]
+        # Add document count for each knowledge base
+        knowledge_bases_with_counts = []
+        for kb in knowledge_bases_storage:
+            kb_copy = kb.copy()
+            kb_copy['document_count'] = len([d for d in documents if d.get('index_id') == kb['id']])
+            knowledge_bases_with_counts.append(kb_copy)
         
         return jsonify({
             'success': True,
-            'knowledge_bases': knowledge_bases
+            'knowledge_bases': knowledge_bases_with_counts
         })
         
     except Exception as e:
         logger.error(f"Failed to get knowledge bases: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge', methods=['POST'])
+def create_knowledge_base():
+    """Create a new knowledge base"""
+    try:
+        data = request.json
+        name = data.get('name')
+        kb_id = data.get('id')
+        description = data.get('description', '')
+        
+        if not name or not kb_id:
+            return jsonify({'error': 'Name and ID are required'}), 400
+        
+        # Check if ID already exists
+        if any(kb['id'] == kb_id for kb in knowledge_bases_storage):
+            return jsonify({'error': 'Knowledge base ID already exists'}), 400
+        
+        new_kb = {
+            'id': kb_id,
+            'name': name,
+            'description': description,
+            'status': 'active',
+            'created_at': datetime.now().isoformat()
+        }
+        
+        knowledge_bases_storage.append(new_kb)
+        
+        return jsonify({
+            'success': True,
+            'knowledge_base': new_kb
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to create knowledge base: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/<index_id>', methods=['PUT'])
+def update_knowledge_base(index_id):
+    """Update an existing knowledge base"""
+    try:
+        data = request.json
+        
+        # Find the knowledge base
+        kb_index = next((i for i, kb in enumerate(knowledge_bases_storage) if kb['id'] == index_id), None)
+        
+        if kb_index is None:
+            return jsonify({'error': 'Knowledge base not found'}), 404
+        
+        # Update fields
+        if 'name' in data:
+            knowledge_bases_storage[kb_index]['name'] = data['name']
+        if 'description' in data:
+            knowledge_bases_storage[kb_index]['description'] = data['description']
+        if 'status' in data:
+            knowledge_bases_storage[kb_index]['status'] = data['status']
+        
+        knowledge_bases_storage[kb_index]['updated_at'] = datetime.now().isoformat()
+        
+        return jsonify({
+            'success': True,
+            'knowledge_base': knowledge_bases_storage[kb_index]
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to update knowledge base: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/knowledge/<index_id>', methods=['DELETE'])
+def delete_knowledge_base(index_id):
+    """Delete a knowledge base"""
+    try:
+        # Check if there are documents in this knowledge base
+        kb_documents = [d for d in documents if d.get('index_id') == index_id]
+        if kb_documents:
+            return jsonify({'error': 'Cannot delete knowledge base with documents'}), 400
+        
+        # Find and remove the knowledge base
+        kb_index = next((i for i, kb in enumerate(knowledge_bases_storage) if kb['id'] == index_id), None)
+        
+        if kb_index is None:
+            return jsonify({'error': 'Knowledge base not found'}), 404
+        
+        deleted_kb = knowledge_bases_storage.pop(kb_index)
+        
+        return jsonify({
+            'success': True,
+            'deleted': deleted_kb
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to delete knowledge base: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/knowledge/<index_id>/documents')
@@ -1632,17 +1736,39 @@ def delete_multiple_documents():
             except Exception as e:
                 logger.warning(f"Failed to delete file for document {doc_id}: {e}")
             
-            # Delete from RAG system
+            # Delete from legacy RAG system
             if RAG_ENABLED:
                 try:
                     rag_engine.delete_document(str(doc_id))
+                    logger.info(f"Deleted document {doc_id} from legacy RAG system")
                 except Exception as e:
-                    logger.error(f"Failed to delete document {doc_id} from RAG system: {e}")
+                    logger.error(f"Failed to delete document {doc_id} from legacy RAG system: {e}")
+            
+            # Delete from ChromaDB
+            if CHROMA_ENABLED and chroma_service:
+                try:
+                    # Try different ID formats
+                    possible_ids = [
+                        str(doc_id),
+                        f"doc_{doc_id}"
+                    ]
+                    if doc_to_delete.get('index_id'):
+                        possible_ids.append(f"kb_{doc_to_delete['index_id']}_doc_{doc_id}")
+                    
+                    for chroma_id in possible_ids:
+                        try:
+                            if chroma_service.delete_document(chroma_id):
+                                logger.info(f"Deleted document {doc_id} from ChromaDB with ID: {chroma_id}")
+                                break
+                        except:
+                            pass
+                except Exception as e:
+                    logger.error(f"Failed to delete document {doc_id} from ChromaDB: {e}")
             
             deleted_count += 1
         
-        # Remove documents from list
-        documents = [d for d in documents if d['id'] not in document_ids]
+        # Remove documents from list (global 변수를 직접 수정)
+        documents[:] = [d for d in documents if d['id'] not in document_ids]
         
         return jsonify({
             'success': True,
