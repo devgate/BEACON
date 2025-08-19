@@ -11,8 +11,8 @@ export const useRAGManager = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [currentKnowledgePage, setCurrentKnowledgePage] = useState(1);
   const [expandedMenu, setExpandedMenu] = useState('knowledge');
-  const [selectedIndex, setSelectedIndex] = useState('SK쉴더스-고객센터');
-  const [selectedIndexId, setSelectedIndexId] = useState('skshieldus_poc_callcenter');
+  const [selectedIndex, setSelectedIndex] = useState('');
+  const [selectedIndexId, setSelectedIndexId] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const [selectedDocuments, setSelectedDocuments] = useState([]);

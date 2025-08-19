@@ -221,6 +221,8 @@ const RAGManagerPage = () => {
         handleDrop={ragHandlers.handleDrop}
         fileInputRef={ragManager.fileInputRef}
         handleFileInputChange={ragHandlers.handleFileInputChange}
+        selectedIndexId={ragManager.selectedIndexId}
+        selectedIndex={ragManager.selectedIndex}
       />
 
       {/* Knowledge Base Modals */}

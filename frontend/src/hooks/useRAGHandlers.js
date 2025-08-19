@@ -40,6 +40,15 @@ export const useRAGHandlers = ({
 
   // File handling
   const handleMultipleFiles = async (files) => {
+    // Check if a knowledge base is selected before processing files
+    if (!selectedIndexId) {
+      setNotification({ 
+        message: '먼저 저장소를 선택해주세요.', 
+        type: 'error' 
+      });
+      return;
+    }
+    
     for (const file of files) {
       await handleFileUpload(file);
     }

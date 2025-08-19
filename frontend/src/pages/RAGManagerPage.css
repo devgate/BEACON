@@ -1152,6 +1152,63 @@ input[type="checkbox"], input[type="radio"] {
   display: none;
 }
 
+/* No Knowledge Base Selected Warning */
+.no-kb-selected-warning {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.no-kb-selected-warning .warning-icon {
+  font-size: 48px;
+  color: #f59e0b;
+  margin-bottom: 16px;
+}
+
+.no-kb-selected-warning h3 {
+  color: #f59e0b;
+  font-size: 20px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.no-kb-selected-warning p {
+  color: #94a3b8;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.btn-close-modal {
+  background: #475569;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-close-modal:hover {
+  background: #64748b;
+}
+
+/* Selected Knowledge Base Info */
+.selected-kb-info {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 6px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.selected-kb-info strong {
+  color: #00d4ff;
+  font-weight: 600;
+}
+
 /* Bulk Actions Bar */
 .bulk-actions-bar {
   display: flex;
