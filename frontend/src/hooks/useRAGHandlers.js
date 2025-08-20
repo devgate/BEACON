@@ -384,14 +384,14 @@ export const useRAGHandlers = (ragManager) => {
         } else {
           setSelectedIndexId('');
           setSelectedIndex('');
-          setDocuments([]);
+          setDocuments(['']);
         }
       } catch (refreshError) {
         console.warn('Could not refresh KB list after deletion:', refreshError);
         // 최소한의 정리
         setSelectedIndexId('');
         setSelectedIndex('');
-        setDocuments([]);
+        setDocuments(['']);
       }
       
       // Use console.log and basic alert instead of React notification to avoid rendering issues

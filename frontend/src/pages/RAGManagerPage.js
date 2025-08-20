@@ -104,6 +104,7 @@ const RAGManagerPage = () => {
             handleReprocessDocument={ragHandlers.handleReprocessDocument}
             formatFileSize={ragHandlers.formatFileSize}
             formatDate={ragHandlers.formatDate}
+            setNotification={ragManager.setNotification}
           />
         );
     }
@@ -191,7 +192,12 @@ const RAGManagerPage = () => {
         </main>
       </div>
 
-      {/* Notification removed to prevent "h is not a function" error */}
+      {/* Notification */}
+      {ragManager.notification && (
+        <div className={`notification ${ragManager.notification.type}`}>
+          {ragManager.notification.message}
+        </div>
+      )}
 
       {/* Upload Modal */}
       <UploadModal 
