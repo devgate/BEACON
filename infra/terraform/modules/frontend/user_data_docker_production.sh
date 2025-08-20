@@ -1,0 +1,234 @@
+#!/bin/bash
+exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+echo "=== Starting Frontend Docker deployment with SSH access at $(date) ==="
+
+# Enable password authentication for SSH
+echo "=== SETTING UP SSH ACCESS ==="
+echo 'ec2-user:SimplePass123!' | chpasswd
+sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+systemctl restart sshd
+echo "Password authentication enabled - User: ec2-user, Pass: SimplePass123!"
+
+# Update system
+yum update -y
+echo "System updated"
+
+# Check memory and disk space  
+echo "=== SYSTEM RESOURCES ==="
+free -h
+df -h
+echo "========================"
+
+# Install Docker using amazon-linux-extras
+amazon-linux-extras install docker -y
+echo "Docker installed"
+
+# Start and enable Docker
+systemctl start docker
+systemctl enable docker
+echo "Docker service started"
+
+# Add ec2-user to docker group
+usermod -a -G docker ec2-user
+echo "User added to docker group"
+
+# Wait for Docker to be ready
+sleep 10
+docker --version
+echo "Docker version: $(docker --version)"
+
+# Check available memory before pull
+echo "=== MEMORY BEFORE DOCKER PULL ==="
+free -h
+
+# Install AWS CLI v2 for ECR authentication (ARM64 version)
+echo "Installing AWS CLI v2 for ARM64..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+rm -rf awscliv2.zip aws/
+
+# Login to AWS ECR
+echo "Logging into AWS ECR..."
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com
+
+# Pull BEACON frontend Docker image from AWS ECR with fallback
+echo "Pulling BEACON frontend Docker image from AWS ECR..."
+if docker pull 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest; then
+    echo "BEACON frontend image pulled successfully from ECR"
+else
+    echo "ECR image not found, building initial image from source..."
+    
+    # Create temporary build directory
+    mkdir -p /tmp/beacon-build
+    cd /tmp/beacon-build
+    
+    # Create basic frontend content for initial deployment
+    cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BEACON - Initializing...</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .status { color: #4CAF50; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 BEACON System</h1>
+        <div class="status">⚠️ Initial deployment in progress...</div>
+        <p>The system is being initialized. Please run the deployment script to complete setup.</p>
+        <p><code>cd deploy/prod && ./deploy.sh all</code></p>
+    </div>
+</body>
+</html>
+EOF
+    
+    # Create health endpoint
+    echo "OK" > health
+    
+    # Create basic Dockerfile
+    cat > Dockerfile << 'EOF'
+FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/
+COPY health /usr/share/nginx/html/
+EXPOSE 80
+EOF
+    
+    # Build and tag image locally
+    docker build -t beacon-frontend-init .
+    docker tag beacon-frontend-init 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
+    
+    # Push to ECR
+    docker push 933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
+    
+    # Clean up
+    cd /
+    rm -rf /tmp/beacon-build
+    
+    echo "Initial frontend image built and pushed to ECR"
+fi
+
+# Check memory after pull
+echo "=== MEMORY AFTER DOCKER PULL ==="
+free -h
+
+# List images
+docker images
+
+# Stop any existing container
+docker stop beacon-frontend 2>/dev/null || true
+docker rm beacon-frontend 2>/dev/null || true
+
+# Run BEACON Frontend Docker container with backend domain
+echo "Starting BEACON Frontend Docker container..."
+
+docker run -d \
+  --name beacon-frontend \
+  --restart unless-stopped \
+  -p 80:80 \
+  -e BACKEND_HOST=api.beacon.sk-shieldus.com \
+  -e BACKEND_PORT=443 \
+  -e BACKEND_PROTOCOL=https \
+  933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
+
+# Wait for container to start
+sleep 10
+
+# Health check with automatic restart logic
+echo "Starting health check with automatic restart capability..."
+for attempt in {1..5}; do
+  echo "Health check attempt $attempt..."
+  
+  # Wait for container to be ready
+  sleep 5
+  
+  # Check if container is running
+  if ! docker ps --filter "name=beacon-frontend" --filter "status=running" --quiet | grep -q .; then
+    echo "WARNING: Container not running, restarting..."
+    docker stop beacon-frontend 2>/dev/null || true
+    docker rm beacon-frontend 2>/dev/null || true
+    
+    # Restart with explicit environment variables
+    echo "Restarting container with fresh environment..."
+    docker run -d \
+      --name beacon-frontend \
+      --restart unless-stopped \
+      -p 80:80 \
+      -e BACKEND_HOST=api.beacon.sk-shieldus.com \
+      -e BACKEND_PORT=443 \
+      -e BACKEND_PROTOCOL=https \
+      933851512157.dkr.ecr.ap-northeast-2.amazonaws.com/beacon-frontend:latest
+    
+    sleep 10
+  fi
+  
+  # Test health endpoint
+  if curl -f http://localhost/health 2>/dev/null; then
+    echo "SUCCESS: Frontend health check passed on attempt $attempt!"
+    
+    # Verify environment variables are correctly set
+    if docker logs beacon-frontend 2>/dev/null | grep -q "api.beacon.sk-shieldus.com:443"; then
+      echo "✅ Environment variables correctly configured"
+      break
+    else
+      echo "⚠️ Environment variables not properly set, will retry..."
+      continue
+    fi
+  else
+    echo "Health check failed on attempt $attempt, checking container logs..."
+    docker logs beacon-frontend --tail 5 2>/dev/null || echo "No logs available"
+    
+    if [ $attempt -lt 5 ]; then
+      echo "Retrying in 10 seconds..."
+      sleep 10
+    fi
+  fi
+done
+
+# Final verification
+echo "=== Final Container Status ==="
+docker ps --filter "name=beacon-frontend"
+docker logs beacon-frontend --tail 3 2>/dev/null | grep "Backend configuration" || echo "No backend config log found"
+
+# Remove old HTML content creation since we're using our own image
+echo "BEACON Frontend container is running with built-in content"
+
+# The BEACON frontend image contains the full application
+# No additional HTML setup needed
+
+echo "Frontend container start exit code: $?"
+
+# Wait for container to start
+sleep 15
+echo "Container started, checking status..."
+
+# Check container status
+echo "=== CONTAINER STATUS ==="
+docker ps -a
+docker logs beacon-frontend 2>/dev/null || echo "No logs yet"
+
+# Check memory usage
+echo "=== MEMORY AFTER CONTAINER START ==="
+free -h
+
+# Test health endpoint
+echo "Testing health endpoint..."
+for i in {1..20}; do
+  if curl -f http://localhost/health 2>/dev/null; then
+    echo "SUCCESS: Frontend health check passed on attempt $i!"
+    break
+  else
+    echo "Health check attempt $i failed, retrying in 3 seconds..."
+    sleep 3
+  fi
+done
+
+# Final status
+echo "=== FINAL STATUS ==="
+docker ps
+netstat -tlnp | grep :80 || true
+echo "=== Frontend Docker deployment completed at $(date) ==="
+echo "SSH Access - User: ec2-user, Pass: SimplePass123!"

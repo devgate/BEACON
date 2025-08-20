@@ -1,0 +1,123 @@
+# Backend은 직접 proxy_pass로 연결
+
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # 로그 설정
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    # gzip 압축 설정
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml;
+
+    # Vision API 프록시 (긴 처리 시간 허용)
+    location /api/vision/ {
+        proxy_pass ${BACKEND_PROTOCOL}://${BACKEND_HOST}:${BACKEND_PORT};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Vision API를 위한 확장된 타임아웃 (5분)
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+        proxy_send_timeout 300s;
+        
+        # CORS 설정
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range" always;
+        
+        # OPTIONS 프리플라이트 요청 처리
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+    }
+
+    # 일반 API 프록시 (백엔드로 전달)
+    location /api/ {
+        proxy_pass ${BACKEND_PROTOCOL}://${BACKEND_HOST}:${BACKEND_PORT};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # 일반 API를 위한 표준 타임아웃 (60초)
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 60s;
+        
+        # CORS 설정
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range" always;
+        
+        # OPTIONS 프리플라이트 요청 처리
+        if ($request_method = 'OPTIONS') {
+            return 204;
+        }
+    }
+
+    # 헬스체크 엔드포인트
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    # manifest.json 특별 처리
+    location = /manifest.json {
+        add_header Content-Type application/json;
+        expires 1h;
+        try_files $uri =404;
+    }
+
+    # favicon과 로고 파일들
+    location ~ \.(ico|png)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # 기타 정적 파일들
+    location ~ \.(jpg|jpeg|gif|svg|woff|woff2|ttf|eot|css|js)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # 정적 파일 캐싱 (/static/ 폴더)
+    location /static/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # SPA를 위한 fallback 설정
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 보안 헤더
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+}
