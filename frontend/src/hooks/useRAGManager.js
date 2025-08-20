@@ -345,10 +345,7 @@ export const useRAGManager = () => {
 
       await loadDocumentsByIndex(selectedIndexId);
       
-      setNotification({ 
-        message: `File "${file.name}" uploaded and processed successfully`, 
-        type: 'success' 
-      });
+      console.log(`File "${file.name}" uploaded and processed successfully`);
       
       setTimeout(() => {
         setUploadProgress(prev => {
@@ -370,10 +367,7 @@ export const useRAGManager = () => {
           error: error.message 
         }
       }));
-      setNotification({ 
-        message: `Failed to upload "${file.name}": ${error.message}`, 
-        type: 'error' 
-      });
+      console.error(`Failed to upload "${file.name}": ${error.message}`);
     }
   };
 

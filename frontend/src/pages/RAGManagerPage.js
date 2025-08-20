@@ -191,25 +191,7 @@ const RAGManagerPage = () => {
         </main>
       </div>
 
-      {/* Notification */}
-      {ragManager.notification && (
-        <div 
-          className={`notification ${ragManager.notification.type}`}
-          style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            padding: '12px 16px',
-            borderRadius: '6px',
-            color: 'white',
-            backgroundColor: ragManager.notification.type === 'success' ? '#10b981' : '#ef4444',
-            zIndex: 1000,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-          }}
-        >
-          {ragManager.notification.message}
-        </div>
-      )}
+      {/* Notification removed to prevent "h is not a function" error */}
 
       {/* Upload Modal */}
       <UploadModal 
