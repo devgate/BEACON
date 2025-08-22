@@ -17,14 +17,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import our RAG components
-from bedrock_service import BedrockService, create_bedrock_service
-from vector_store import VectorStore, create_vector_store
-from rag_engine import RAGEngine, create_rag_engine
+from services.bedrock_service import BedrockService, create_bedrock_service
+from storage.vector_store import VectorStore, create_vector_store
+from services.rag_engine import RAGEngine, create_rag_engine
 
 # Import new document processing components (with fallback)
 try:
-    from document_processor import DocumentProcessor
-    from chroma_service import ChromaService, DocumentChunker
+    from core.document_processor import DocumentProcessor
+    from storage.chroma_service import ChromaService, DocumentChunker
     ENHANCED_PROCESSING_AVAILABLE = True
     logger.info("Enhanced document processing modules loaded successfully")
 except ImportError as e:

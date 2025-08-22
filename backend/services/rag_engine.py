@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-from bedrock_service import BedrockService, BedrockModel
-from vector_store import VectorStore, DocumentChunk, SearchResult
+from services.bedrock_service import BedrockService, BedrockModel
+from storage.vector_store import VectorStore, DocumentChunk, SearchResult
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -627,8 +627,8 @@ def create_rag_engine(bedrock_service: BedrockService,
 if __name__ == "__main__":
     # Test the RAG engine
     try:
-        from bedrock_service import BedrockService
-        from vector_store import VectorStore
+        from services.bedrock_service import BedrockService
+        from storage.vector_store import VectorStore
         
         # Initialize services
         bedrock_service = BedrockService()
