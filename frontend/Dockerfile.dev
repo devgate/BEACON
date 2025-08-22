@@ -1,0 +1,16 @@
+# Development Dockerfile for Frontend
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package*.json ./
+RUN npm install
+
+# Don't copy source code - it will be mounted as volume
+# This allows hot reload
+
+EXPOSE 3000
+
+# React dev server with hot reload
+CMD ["npm", "start"]
