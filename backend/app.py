@@ -70,10 +70,15 @@ def initialize_services():
         logger.info("Initializing enhanced document processing system...")
         
         # Initialize Bedrock service
-        bedrock_service = create_bedrock_service({
-            'BEDROCK_REGION': os.getenv('BEDROCK_REGION', 'ap-northeast-2'),
-            'AWS_PROFILE': os.getenv('AWS_PROFILE')
-        })
+        aws_profile = os.getenv('AWS_PROFILE')
+        config = {
+            'BEDROCK_REGION': os.getenv('BEDROCK_REGION', 'ap-northeast-2')
+        }
+        # Only add AWS_PROFILE if it's set and not empty
+        if aws_profile and aws_profile.strip():
+            config['AWS_PROFILE'] = aws_profile
+        
+        bedrock_service = create_bedrock_service(config)
         context['bedrock_service'] = bedrock_service
         
         # Initialize vector store (legacy)

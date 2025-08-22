@@ -224,3 +224,6 @@ node_modules/
 # Chroma DB 
 *.sqlite3
 *.bin
+
+# AWS Development Credentials (보안)
+.aws-dev-credentials

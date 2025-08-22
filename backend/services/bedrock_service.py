@@ -87,6 +87,9 @@ class BedrockService:
         session_kwargs = {'region_name': region_name}
         if profile_name:
             session_kwargs['profile_name'] = profile_name
+            logger.info(f"Creating session with profile: {profile_name}")
+        else:
+            logger.info("Creating session without profile (using environment variables)")
             
         session = boto3.Session(**session_kwargs)
         
@@ -827,7 +830,29 @@ def create_bedrock_service(app_config: Dict) -> BedrockService:
     region = app_config.get('BEDROCK_REGION', 'ap-northeast-2')
     profile = app_config.get('AWS_PROFILE')
     
-    service = BedrockService(region_name=region, profile_name=profile)
+    # Docker 환경에서는 환경변수로 AWS 자격증명을 사용 (profile 사용 안함)
+    import os
+    aws_key = os.getenv('AWS_ACCESS_KEY_ID')
+    aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')
+    logger.info(f"AWS_ACCESS_KEY_ID present: {bool(aws_key)}")
+    logger.info(f"AWS_SECRET_ACCESS_KEY present: {bool(aws_secret)}")
+    logger.info(f"AWS_PROFILE: {repr(profile)}")
+    
+    if aws_key and aws_secret:
+        # 환경변수가 있으면 profile 사용하지 않음 
+        # AWS_PROFILE 환경변수도 명시적으로 제거
+        if 'AWS_PROFILE' in os.environ:
+            del os.environ['AWS_PROFILE']
+        service = BedrockService(region_name=region, profile_name=None)
+        logger.info("✅ Using AWS credentials from environment variables")
+    elif profile and profile.strip():
+        # profile이 설정되어 있으면 profile 사용
+        service = BedrockService(region_name=region, profile_name=profile)
+        logger.info(f"Using AWS profile: {profile}")
+    else:
+        # 환경변수도 profile도 없으면 기본값 사용
+        service = BedrockService(region_name=region, profile_name=None)
+        logger.info("Using default AWS credentials (no profile)")
     
     # Log available models
     models = service.get_available_models()
