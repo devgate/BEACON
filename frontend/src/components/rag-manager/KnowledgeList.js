@@ -29,7 +29,7 @@ const KnowledgeList = ({
         <div className="section-header-controls">
           <input 
             type="text"
-            placeholder="인덱스세요"
+            placeholder="입력하세요"
             className="search-input"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
