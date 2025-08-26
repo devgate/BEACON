@@ -11,7 +11,9 @@ import {
   faSpinner,
   faFileText,
   faEllipsisH,
-  faExclamationTriangle
+  faExclamationTriangle,
+  faListOl,
+  faChartLine
 } from '@fortawesome/free-solid-svg-icons';
 import { bedrockService, documentService } from '../../services/api';
 import './KnowledgeBaseSettings.css';
@@ -33,6 +35,7 @@ const KnowledgeBaseSettings = ({
   const [documentText, setDocumentText] = useState('');
   const [previewChunks, setPreviewChunks] = useState([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [expandedSpecs, setExpandedSpecs] = useState({}); // 각 모델의 spec 확장 상태
 
   // Chunking Strategies
   const chunkingStrategies = [
@@ -112,6 +115,50 @@ const KnowledgeBaseSettings = ({
     }
   }, [selectedIndexId]);
 
+  // 사용자 친화적 데이터 포맷팅 함수
+  const formatModelData = (model) => {
+    // 차원 정보 포맷팅
+    const formatDimensions = (dims) => {
+      if (Array.isArray(dims)) {
+        return dims.map(d => `${d.toLocaleString()}D`).join(', ');
+      }
+      return typeof dims === 'number' ? `${dims.toLocaleString()}D` : dims;
+    };
+
+    // 비용 정보 포맷팅
+    const formatCost = (cost) => {
+      if (!cost) return null;
+      if (typeof cost === 'string') return cost;
+      if (typeof cost === 'number') return `$${cost.toFixed(4)}/1K tokens`;
+      return cost;
+    };
+
+    // 최대 토큰 포맷팅
+    const formatMaxTokens = (tokens) => {
+      if (!tokens) return null;
+      if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+      if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}K`;
+      return tokens.toString();
+    };
+
+    return {
+      ...model,
+      formattedDimensions: formatDimensions(model.dimensions),
+      formattedCost: formatCost(model.cost),
+      formattedMaxTokens: formatMaxTokens(model.maxTokens)
+    };
+  };
+
+  // Spec 확장/축소 토글 함수
+  const toggleSpecExpansion = (e, modelId, specType) => {
+    e.stopPropagation(); // 이벤트 버블링 방지
+    const key = `${modelId}-${specType}`;
+    setExpandedSpecs(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
   const fetchEmbeddingModels = async () => {
     setLoadingModels(true);
     setModelsFetchError(null);
@@ -122,54 +169,57 @@ const KnowledgeBaseSettings = ({
       
       if (data.models && data.models.length > 0) {
         // Process and format models from API
-        const formattedModels = data.models.map(model => ({
-          id: model.id,
-          name: model.name,
-          provider: model.provider || model.providerName,
-          dimensions: model.dimensions || model.defaultDimension,
-          description: model.description,
-          features: model.features || [],
-          cost: model.cost,
-          language: model.language,
-          status: model.status || 'ACTIVE',
-          recommended: model.recommended || false,
-          maxTokens: model.maxTokens || 8000
-        }));
+        const formattedModels = data.models.map(model => {
+          const baseModel = {
+            id: model.id,
+            name: model.name,
+            provider: model.provider || model.providerName,
+            dimensions: model.dimensions || model.defaultDimension,
+            cost: model.cost,
+            language: model.language,
+            status: model.status || 'ACTIVE',
+            recommended: model.recommended || false,
+            maxTokens: model.maxTokens || 8000
+          };
+          
+          // 사용자 친화적 포맷 적용
+          return formatModelData(baseModel);
+        });
         
         setEmbeddingModels(formattedModels);
         
         setNotification({
-          message: `Loaded ${formattedModels.length} embedding models from AWS Bedrock (${data.source})`,
+          message: `AWS Bedrock에서 ${formattedModels.length}개 임베딩 모델을 성공적으로 로드했습니다`,
           type: 'success'
         });
       } else {
-        // Use fallback models if API returns empty
-        setEmbeddingModels(getFallbackModels());
+        // No models available from API
+        setEmbeddingModels([]);
+        setModelsFetchError('AWS Bedrock에서 사용 가능한 임베딩 모델이 없습니다');
         setNotification({
-          message: 'Using default embedding models (Bedrock API returned empty)',
-          type: 'info'
+          message: 'AWS Bedrock에서 임베딩 모델을 찾을 수 없습니다',
+          type: 'warning'
         });
       }
     } catch (error) {
       console.error('Failed to fetch embedding models:', error);
-      let errorMessage = 'Failed to load embedding models from AWS Bedrock';
+      let errorMessage = 'AWS Bedrock에서 임베딩 모델을 로드하는데 실패했습니다';
       
       // Provide more specific error messages
       if (error.message.includes('Network Error')) {
-        errorMessage = 'Cannot connect to backend API. Please check if the server is running.';
+        errorMessage = '백엔드 API에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
       } else if (error.message.includes('404')) {
-        errorMessage = 'Embedding models API endpoint not found.';
+        errorMessage = '임베딩 모델 API 엔드포인트를 찾을 수 없습니다.';
       } else if (error.message.includes('500')) {
-        errorMessage = 'Backend server error when fetching models.';
+        errorMessage = '모델을 가져오는 중 백엔드 서버 오류가 발생했습니다.';
       } else if (error.message) {
-        errorMessage = `Error: ${error.message}`;
+        errorMessage = `오류: ${error.message}`;
       }
       
       setModelsFetchError(errorMessage);
-      // Use fallback models on error
-      setEmbeddingModels(getFallbackModels());
+      setEmbeddingModels([]);
       setNotification({
-        message: 'Failed to connect to AWS Bedrock, using default models',
+        message: 'AWS Bedrock 연결에 실패했습니다. 네트워크 상태를 확인해주세요.',
         type: 'error'
       });
     } finally {
@@ -177,34 +227,6 @@ const KnowledgeBaseSettings = ({
     }
   };
 
-  const getFallbackModels = () => [
-    {
-      id: 'amazon.titan-embed-text-v2:0',
-      name: 'Titan Embeddings v2',
-      provider: 'Amazon',
-      dimensions: 512,
-      description: 'Advanced embeddings with variable dimensions',
-      features: ['Variable dimensions', 'Multilingual support', 'Cost-effective'],
-      cost: '$0.00002 per 1K tokens',
-      language: 'multilingual',
-      status: 'ACTIVE',
-      recommended: true,
-      maxTokens: 8000
-    },
-    {
-      id: 'amazon.titan-embed-text-v1',
-      name: 'Titan Embeddings v1',
-      provider: 'Amazon',
-      dimensions: 1536,
-      description: 'General purpose text embeddings',
-      features: ['Fixed dimensions', 'Proven performance', 'Stable'],
-      cost: '$0.0001 per 1K tokens',
-      language: 'multilingual',
-      status: 'ACTIVE',
-      recommended: false,
-      maxTokens: 8000
-    }
-  ];
 
   const fetchAvailableDocuments = async () => {
     try {
@@ -1163,7 +1185,11 @@ const KnowledgeBaseSettings = ({
 
   const handleResetSettings = () => {
     if (window.confirm('설정을 기본값으로 초기화하시겠습니까?')) {
-      setEmbeddingModel(embeddingModels[0]);
+      // Reset to recommended model or first available model
+      const recommendedModel = embeddingModels.find(m => m.recommended) || embeddingModels[0];
+      if (recommendedModel) {
+        setEmbeddingModel(recommendedModel);
+      }
       setChunkingStrategy(chunkingStrategies[0]);
       setChunkSize(512);
       setChunkOverlap(50);
@@ -1209,14 +1235,14 @@ const KnowledgeBaseSettings = ({
           {loadingModels ? (
             <div className="model-loading">
               <FontAwesomeIcon icon={faSpinner} className="fa-spin" />
-              <span>Loading models from AWS Bedrock...</span>
+              <span>AWS Bedrock에서 모델을 불러오는 중...</span>
             </div>
-          ) : modelsFetchError ? (
+          ) : modelsFetchError || embeddingModels.length === 0 ? (
             <div className="model-error">
               <FontAwesomeIcon icon={faExclamationCircle} />
-              <span>{modelsFetchError}</span>
+              <span>{modelsFetchError || 'AWS Bedrock에서 사용 가능한 임베딩 모델이 없습니다'}</span>
               <button onClick={fetchEmbeddingModels} className="retry-btn">
-                Retry
+                다시 시도
               </button>
             </div>
           ) : (
@@ -1228,40 +1254,140 @@ const KnowledgeBaseSettings = ({
                   onClick={() => model.status === 'ACTIVE' && handleEmbeddingModelChange(model.id)}
                 >
                   {model.recommended && (
-                    <div className="recommended-badge">Recommended</div>
+                    <div className="recommended-badge">추천</div>
                   )}
                   {model.status !== 'ACTIVE' && (
-                    <div className="status-badge">Unavailable</div>
+                    <div className="status-badge">사용 불가</div>
                   )}
                   <div className="model-header">
                     <h4>{model.name}</h4>
                     <span className="provider">{model.provider}</span>
                   </div>
-                  <p className="model-description">{model.description}</p>
                   <div className="model-specs">
-                    <span className="spec-item">
-                      <strong>Dimensions:</strong> {
-                        Array.isArray(model.dimensions) 
-                          ? model.dimensions.join(', ') 
-                          : model.dimensions
-                      }
-                    </span>
-                    {model.cost && (
-                      <span className="spec-item">
-                        <strong>Cost:</strong> {model.cost}
-                      </span>
+                    <div 
+                      className="spec-item dimensions clickable"
+                      onClick={(e) => toggleSpecExpansion(e, model.id, 'dimensions')}
+                      title="클릭하여 전체 내용 보기"
+                    >
+                      <div className="spec-label">차원</div>
+                      <div className="spec-value">
+                        {expandedSpecs[`${model.id}-dimensions`] 
+                          ? model.formattedDimensions 
+                          : model.formattedDimensions.length > 6 
+                            ? `${model.formattedDimensions.substring(0, 6)}...` 
+                            : model.formattedDimensions}
+                      </div>
+                    </div>
+                    {model.formattedCost && (
+                      <div 
+                        className="spec-item cost clickable"
+                        onClick={(e) => toggleSpecExpansion(e, model.id, 'cost')}
+                        title="클릭하여 전체 내용 보기"
+                      >
+                        <div className="spec-label">비용</div>
+                        <div className="spec-value">
+                          {expandedSpecs[`${model.id}-cost`]
+                            ? model.formattedCost
+                            : model.formattedCost.length > 8 
+                              ? `${model.formattedCost.substring(0, 8)}...` 
+                              : model.formattedCost}
+                        </div>
+                      </div>
                     )}
-                    {model.maxTokens && (
-                      <span className="spec-item">
-                        <strong>Max Tokens:</strong> {model.maxTokens.toLocaleString()}
-                      </span>
+                    {model.formattedMaxTokens && (
+                      <div className="spec-item tokens">
+                        <div className="spec-label">최대 토큰</div>
+                        <div className="spec-value">{model.formattedMaxTokens}</div>
+                      </div>
                     )}
                   </div>
-                  <div className="model-features">
-                    {model.features.map((feature, idx) => (
-                      <span key={idx} className="feature-tag">{feature}</span>
-                    ))}
-                  </div>
+                  
+                  {/* 차원 상세 정보 패널 */}
+                  {expandedSpecs[`${model.id}-dimensions`] && (
+                    <div className="model-details-panel">
+                      <div className="model-details">
+                        <div className="detail-section">
+                          <h5 className="detail-section-title">차원 정보</h5>
+                          <div className="detail-item">
+                            <span className="detail-label">사용 가능한 차원:</span>
+                            <div className="detail-value">
+                              {Array.isArray(model.dimensions) 
+                                ? model.dimensions.map(dim => (
+                                    <span key={dim} className="dimension-badge">{dim.toLocaleString()}D</span>
+                                  ))
+                                : <span className="dimension-badge">{model.dimensions?.toLocaleString()}D</span>
+                              }
+                            </div>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">벡터 크기:</span>
+                            <span className="detail-value">
+                              {Array.isArray(model.dimensions) 
+                                ? `${Math.min(...model.dimensions).toLocaleString()} ~ ${Math.max(...model.dimensions).toLocaleString()} 차원`
+                                : `${model.dimensions?.toLocaleString()} 차원 고정`
+                              }
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">권장 사용:</span>
+                            <span className="detail-value">
+                              {Array.isArray(model.dimensions) 
+                                ? "256D (빠른 처리), 512D (균형), 1024D (높은 정확도)"
+                                : "고정 차원으로 일관된 성능 보장"
+                              }
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 비용 상세 정보 패널 */}
+                  {expandedSpecs[`${model.id}-cost`] && (
+                    <div className="model-details-panel">
+                      <div className="model-details">
+                        <div className="detail-section">
+                          <h5 className="detail-section-title">비용 세부정보</h5>
+                          <div className="detail-item">
+                            <span className="detail-label">토큰당 비용:</span>
+                            <span className="detail-value cost-highlight">{model.formattedCost || model.cost}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">최대 토큰:</span>
+                            <span className="detail-value">{model.maxTokens?.toLocaleString()}</span>
+                          </div>
+                          {model.id === 'amazon.titan-embed-image-v1' && (
+                            <div className="detail-item">
+                              <span className="detail-label">이미지 처리:</span>
+                              <span className="detail-value">이미지당 $0.0008</span>
+                            </div>
+                          )}
+                          <div className="detail-item">
+                            <span className="detail-label">예상 월 비용:</span>
+                            <span className="detail-value">
+                              {model.id === 'amazon.titan-embed-text-v2:0' 
+                                ? "100만 토큰당 $0.02 (v1 대비 80% 절약)"
+                                : model.id === 'amazon.titan-embed-text-v1'
+                                ? "100만 토큰당 $0.10"
+                                : "사용량에 따라 산정"
+                              }
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">비용 효율성:</span>
+                            <span className="detail-value">
+                              {model.id === 'amazon.titan-embed-text-v2:0' 
+                                ? "⭐⭐⭐⭐⭐ 매우 우수"
+                                : model.id === 'amazon.titan-embed-text-v1'
+                                ? "⭐⭐⭐ 보통"
+                                : "⭐⭐⭐⭐ 좋음"
+                              }
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1491,33 +1617,8 @@ const KnowledgeBaseSettings = ({
                         {previewChunks ? previewChunks.length : 0}개
                       </span>
                     </div>
-                    <div className="stat-item">
-                      <span className="stat-label">평균 토큰 수</span>
-                      <span className="stat-value">
-                        {previewChunks && previewChunks.length > 0 
-                          ? Math.round(previewChunks.reduce((acc, chunk) => acc + (chunk.tokens || 0), 0) / previewChunks.length)
-                          : 0
-                        }개
-                      </span>
-                    </div>
-                    <div className="stat-item">
-                      <span className="stat-label">토큰 범위</span>
-                      <span className="stat-value text-sm">
-                        {previewChunks && previewChunks.length > 0 
-                          ? `${Math.min(...previewChunks.map(c => c.tokens || 0))} - ${Math.max(...previewChunks.map(c => c.tokens || 0))}`
-                          : '0 - 0'
-                        }
-                      </span>
-                    </div>
-                    <div className="stat-item">
-                      <span className="stat-label">평균 품질</span>
-                      <span className="stat-value">
-                        {previewChunks && previewChunks.length > 0 
-                          ? Math.round(calculateAverageQuality(previewChunks) * 100)
-                          : 0
-                        }%
-                      </span>
-                    </div>
+       
+        
                   </div>
                   
                   {/* 전략 분석 카드 */}
@@ -1741,21 +1842,73 @@ const KnowledgeBaseSettings = ({
             <h3>현재 설정 요약</h3>
             <div className="summary-content">
               <div className="summary-item">
-                <FontAwesomeIcon icon={faBrain} className="summary-icon" />
+                <div className="summary-icon-wrapper">
+                  <FontAwesomeIcon icon={faBrain} className="summary-icon" />
+                </div>
                 <div className="summary-details">
-                  <strong>임베딩 모델:</strong> {embeddingModel.name}
-                  <span className="sub-detail">
-                    ({embeddingModel.dimensions}차원{normalize ? ', 정규화' : ''})
-                  </span>
+                  <div className="summary-title">임베딩 모델</div>
+                  <div className="summary-value">{embeddingModel.name}</div>
+                  <div className="summary-meta">
+                    <span className="meta-item">{embeddingModel.formattedDimensions || 
+                      (Array.isArray(embeddingModel.dimensions) ? 
+                        embeddingModel.dimensions.map(d => `${d.toLocaleString()}D`).join(', ') : 
+                        `${embeddingModel.dimensions}D`)}</span>
+                    <span className="meta-item">{embeddingModel.provider}</span>
+                    {embeddingModel.formattedCost && (
+                      <span className="meta-item cost">{embeddingModel.formattedCost}</span>
+                    )}
+                  </div>
                 </div>
               </div>
+              
               <div className="summary-item">
-                <FontAwesomeIcon icon={faCut} className="summary-icon" />
+                <div className="summary-icon-wrapper">
+                  <FontAwesomeIcon icon={faCut} className="summary-icon" />
+                </div>
                 <div className="summary-details">
-                  <strong>청킹 전략:</strong> {chunkingStrategy.name}
-                  <span className="sub-detail">
-                    (크기: {chunkSize}, 오버랩: {chunkOverlap})
-                  </span>
+                  <div className="summary-title">청킹 전략</div>
+                  <div className="summary-value">{chunkingStrategy.name}</div>
+                  <div className="summary-meta">
+                    <span className="meta-item">크기: {chunkSize.toLocaleString()}토큰</span>
+                    <span className="meta-item">오버랩: {chunkOverlap.toLocaleString()}토큰</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="summary-item">
+                <div className="summary-icon-wrapper">
+                  <FontAwesomeIcon icon={faChartLine} className="summary-icon" />
+                </div>
+                <div className="summary-details">
+                  <div className="summary-title">예상 결과</div>
+                  <div className="summary-value">
+                    {(() => {
+                      // 현재 설정 기준으로 예상 청크 수 계산
+                      if (previewChunks.length > 0) {
+                        return `${previewChunks.length}개 청크`;
+                      }
+                      
+                      // 미리보기가 없을 때는 현재 설정으로 추정
+                      let estimatedTextLength = documentText && documentText.trim() ? 
+                        countTokens(documentText) : 
+                        selectedDocument ? 3000 : 2000;
+                      
+                      const effectiveChunkSize = chunkSize - chunkOverlap;
+                      const estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / effectiveChunkSize));
+                      
+                      return `약 ${estimatedChunks}개 청크`;
+                    })()}
+                  </div>
+                  <div className="summary-meta">
+                    <span className="meta-item">
+                      실제 청크: {previewChunks.length > 0 ? `${previewChunks.length}개` : '미리보기 필요'}
+                    </span>
+                    {previewChunks.length > 0 && (
+                      <span className="meta-item success">
+                        미리보기 완료
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

@@ -42,6 +42,7 @@ const EmbeddingConfig = ({
   ];
 
   const [showDetails, setShowDetails] = useState(false);
+  const [selectedModelDetails, setSelectedModelDetails] = useState(null); // 개별 모델 세부정보 표시
   const [selectedDimension, setSelectedDimension] = useState(512);
   const [normalize, setNormalize] = useState(true);
   
@@ -76,6 +77,12 @@ const EmbeddingConfig = ({
 
   const currentModel = embeddingModels.find(m => m.id === selectedModel?.modelId);
 
+  // 개별 모델 세부정보 토글 핸들러
+  const toggleModelDetails = (modelId, e) => {
+    e.stopPropagation(); // 카드 클릭 이벤트 방지
+    setSelectedModelDetails(prev => prev === modelId ? null : modelId);
+  };
+
   return (
     <div className="embedding-config-container">
       <div className="config-header">
@@ -109,30 +116,114 @@ const EmbeddingConfig = ({
               </div>
               <div className="model-info">
                 <span className="provider">{model.provider}</span>
-                <span className="dimensions">
-                  {Array.isArray(model.dimensions) 
-                    ? `${model.dimensions.join('/')}D` 
-                    : `${model.dimensions}D`}
-                </span>
+                <div 
+                  className={`dimensions-info clickable-spec ${selectedModelDetails === model.id ? 'active' : ''}`}
+                  onClick={(e) => toggleModelDetails(model.id, e)}
+                  title="차원 세부정보 보기"
+                >
+                  <span className="dimensions-label">차원:</span>
+                  <span className="dimensions-value">
+                    {Array.isArray(model.dimensions) 
+                      ? `${model.dimensions.join('/')}D` 
+                      : `${model.dimensions}D`}
+                  </span>
+                  <FontAwesomeIcon icon={faInfoCircle} className="spec-icon" />
+                </div>
               </div>
+              
               <div className="model-description">{model.description}</div>
-              {showDetails && (
+              
+              <div 
+                className={`cost-info clickable-spec ${selectedModelDetails === model.id ? 'active' : ''}`}
+                onClick={(e) => toggleModelDetails(model.id, e)}
+                title="비용 세부정보 보기"
+              >
+                <span className="cost-label">비용:</span>
+                <span className="cost-value">{model.cost}</span>
+                <FontAwesomeIcon icon={faInfoCircle} className="spec-icon" />
+              </div>
+              
+              {(showDetails || selectedModelDetails === model.id) && (
                 <div className="model-details">
-                  <div className="detail-item">
-                    <span className="detail-label">Max Tokens:</span>
-                    <span className="detail-value">{model.maxTokens.toLocaleString()}</span>
+                  <div className="detail-section">
+                    <h5 className="detail-section-title">차원 정보</h5>
+                    <div className="detail-item">
+                      <span className="detail-label">사용 가능한 차원:</span>
+                      <div className="detail-value">
+                        {Array.isArray(model.dimensions) 
+                          ? model.dimensions.map(dim => (
+                              <span key={dim} className="dimension-badge">{dim}D</span>
+                            ))
+                          : <span className="dimension-badge">{model.dimensions}D</span>
+                        }
+                      </div>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">벡터 크기:</span>
+                      <span className="detail-value">
+                        {Array.isArray(model.dimensions) 
+                          ? `${Math.min(...model.dimensions)} ~ ${Math.max(...model.dimensions)} 차원`
+                          : `${model.dimensions} 차원 고정`
+                        }
+                      </span>
+                    </div>
                   </div>
-                  <div className="detail-item">
-                    <span className="detail-label">Cost:</span>
-                    <span className="detail-value">{model.cost}</span>
+                  
+                  <div className="detail-section">
+                    <h5 className="detail-section-title">비용 세부정보</h5>
+                    <div className="detail-item">
+                      <span className="detail-label">토큰당 비용:</span>
+                      <span className="detail-value cost-highlight">{model.cost}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">최대 토큰:</span>
+                      <span className="detail-value">{model.maxTokens.toLocaleString()}</span>
+                    </div>
+                    {model.id === 'amazon.titan-embed-image-v1' && (
+                      <div className="detail-item">
+                        <span className="detail-label">이미지 처리:</span>
+                        <span className="detail-value">이미지당 $0.0008</span>
+                      </div>
+                    )}
                   </div>
+                  
                   {model.features && (
-                    <div className="features">
-                      {model.features.map((feature, idx) => (
-                        <span key={idx} className="feature-tag">{feature}</span>
-                      ))}
+                    <div className="detail-section">
+                      <h5 className="detail-section-title">주요 기능</h5>
+                      <div className="features">
+                        {model.features.map((feature, idx) => (
+                          <span key={idx} className="feature-tag">{feature}</span>
+                        ))}
+                      </div>
                     </div>
                   )}
+                  
+                  <div className="detail-section">
+                    <h5 className="detail-section-title">사용 권장사항</h5>
+                    <div className="recommendations">
+                      {model.id === 'amazon.titan-embed-text-v1' && (
+                        <p className="recommendation-text">
+                          • 일반적인 텍스트 임베딩에 적합<br/>
+                          • 안정적인 성능과 호환성 보장<br/>
+                          • 기존 프로젝트에 권장
+                        </p>
+                      )}
+                      {model.id === 'amazon.titan-embed-text-v2:0' && (
+                        <p className="recommendation-text">
+                          • 다국어 지원이 향상된 최신 모델<br/>
+                          • 가변 차원으로 용량 최적화 가능<br/>
+                          • 새로운 프로젝트에 권장
+                        </p>
+                      )}
+                      {model.id === 'amazon.titan-embed-image-v1' && (
+                        <p className="recommendation-text">
+                          • 텍스트와 이미지 동시 처리<br/>
+                          • 멀티모달 검색 시스템 구축<br/>
+                          • 시각적 콘텐츠 포함 문서에 권장
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
