@@ -470,41 +470,74 @@ def download_file(doc_id):
     """Download a document file"""
     logger.info(f"Download request for doc_id: {doc_id}")
     
-    # Try ChromaDB first
-    if CHROMA_ENABLED and chroma_service:
-        try:
-            doc_info = chroma_service.get_document_info(doc_id)
-            if not doc_info.get('exists'):
-                logger.warning(f"Document not found in ChromaDB: {doc_id}")
+    try:
+        logger.info(f"Looking for doc_id: {doc_id} in documents array (total: {len(documents)})")
+        
+        # Debug: log all document IDs
+        doc_ids = [str(d.get('id')) for d in documents]
+        logger.info(f"Available document IDs: {doc_ids}")
+        
+        # First try to find in documents array (primary method)
+        doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
+        
+        if doc and doc.get('file_path'):
+            file_path = doc['file_path']
+            
+            # Check if original file exists
+            if os.path.exists(file_path):
+                logger.info(f"Serving original file: {file_path}")
+                return send_file(
+                    file_path, 
+                    as_attachment=True, 
+                    download_name=doc.get('original_filename', doc.get('title', f'document_{doc_id}.pdf'))
+                )
             else:
-                # Try to find file in uploads directory
-                uploads_dir = os.path.join(os.path.dirname(__file__), '..', 'uploads')
-                file_path = os.path.join(uploads_dir, f"{doc_id}.txt")
-                
-                if os.path.exists(file_path):
-                    logger.info(f"Serving file: {file_path}")
-                    return send_file(
-                        file_path,
-                        as_attachment=True,
-                        download_name=f"{doc_id}.txt"
-                    )
-        except Exception as e:
-            logger.error(f"Error checking ChromaDB: {e}")
-    
-    # Fallback to documents array
-    doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
-    
-    if not doc or not doc.get('file_path'):
+                logger.warning(f"Original file not found: {file_path}")
+        
+        # Try ChromaDB approach if available
+        if CHROMA_ENABLED and chroma_service:
+            try:
+                doc_info = chroma_service.get_document_info(doc_id)
+                if doc_info and doc_info.get('exists'):
+                    # Try to find original file with various naming patterns
+                    uploads_dir = os.path.join(os.path.dirname(__file__), '..', 'uploads')
+                    
+                    # Try different file patterns
+                    possible_files = [
+                        os.path.join(uploads_dir, f"doc_{doc_id}_*.pdf"),
+                        os.path.join(uploads_dir, f"doc_{doc_id}_*.docx"),
+                        os.path.join(uploads_dir, f"doc_{doc_id}_*"),
+                        os.path.join(uploads_dir, f"{doc_id}.pdf"),
+                        os.path.join(uploads_dir, f"{doc_id}.txt")
+                    ]
+                    
+                    import glob
+                    for pattern in possible_files:
+                        matches = glob.glob(pattern)
+                        if matches:
+                            file_path = matches[0]  # Take first match
+                            logger.info(f"Found file via pattern matching: {file_path}")
+                            
+                            # Get original filename from document info or use default
+                            filename = os.path.basename(file_path)
+                            if doc and doc.get('original_filename'):
+                                filename = doc['original_filename']
+                            
+                            return send_file(
+                                file_path,
+                                as_attachment=True,
+                                download_name=filename
+                            )
+            except Exception as e:
+                logger.error(f"Error checking ChromaDB: {e}")
+        
+        # If nothing found, return 404
+        logger.error(f"Document not found: {doc_id}")
         return jsonify({'error': '파일을 찾을 수 없습니다.'}), 404
-    
-    if not os.path.exists(doc['file_path']):
-        return jsonify({'error': '파일이 존재하지 않습니다.'}), 404
-    
-    return send_file(
-        doc['file_path'], 
-        as_attachment=True, 
-        download_name=doc.get('original_filename', doc['title'])
-    )
+        
+    except Exception as e:
+        logger.error(f"Download error for doc_id {doc_id}: {e}")
+        return jsonify({'error': f'파일 다운로드 중 오류가 발생했습니다: {str(e)}'}), 500
 
 @documents_bp.route('/api/documents/<int:doc_id>/reprocess', methods=['POST'])
 def reprocess_document(doc_id):
@@ -538,6 +571,73 @@ def reprocess_document(doc_id):
     except Exception as e:
         logger.error(f"Document reprocessing error: {e}")
         return jsonify({'error': f'Failed to reprocess document: {str(e)}'}), 500
+
+@documents_bp.route('/api/documents/<int:doc_id>/preview')
+def get_document_preview(doc_id):
+    """Get document preview with text, images, and metadata"""
+    try:
+        # Find document
+        doc = None
+        for d in documents:
+            if d.get('id') == doc_id:
+                doc = d
+                break
+        
+        if not doc:
+            return jsonify({'error': 'Document not found'}), 404
+        
+        file_path = doc.get('file_path')
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'Document file not found'}), 404
+        
+        preview_data = {
+            'text_content': '',
+            'images': [],
+            'metadata': {
+                'document_id': doc_id,
+                'file_name': doc.get('title', 'Unknown'),
+                'file_size': os.path.getsize(file_path) if os.path.exists(file_path) else 0,
+                'created_at': doc.get('created_at', datetime.now().isoformat()),
+                'category_id': doc.get('category_id'),
+                'status': doc.get('status', 'Unknown')
+            }
+        }
+        
+        # Extract text and images from PDF
+        if file_path.lower().endswith('.pdf'):
+            with open(file_path, 'rb') as file:
+                # Extract text
+                text_content = extract_text_from_pdf(file)
+                if text_content:
+                    preview_data['text_content'] = text_content
+                    # Update metadata with text statistics
+                    preview_data['metadata']['word_count'] = len(text_content.split())
+                    preview_data['metadata']['line_count'] = len(text_content.split('\n'))
+                    preview_data['metadata']['sentence_count'] = len([s for s in text_content.split('.') if s.strip()])
+                
+                # Extract images
+                images = extract_images_from_pdf(file, doc_id)
+                preview_data['images'] = images
+                preview_data['metadata']['total_pages'] = len(images)
+        
+        # Add chunking information if available
+        if CHROMA_ENABLED and chroma_service:
+            try:
+                doc_info = chroma_service.get_document_info(str(doc_id))
+                if doc_info.get('exists'):
+                    preview_data['metadata']['total_chunks'] = doc_info.get('chunk_count', 0)
+                    preview_data['metadata']['total_tokens'] = doc_info.get('total_size', 0)
+            except Exception as e:
+                logger.warning(f"Failed to get chunk info for doc {doc_id}: {e}")
+        
+        return jsonify({
+            'success': True,
+            **preview_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Document preview error: {e}")
+        return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
 
 @documents_bp.route('/api/document/formats')
 def get_supported_formats():

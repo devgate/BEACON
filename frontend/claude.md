@@ -17,6 +17,14 @@
 - **Model Selection** - Multiple AI model support with cost tracking
 - **File Management** - PDF upload, preview, and organization
 - **Responsive Design** - Mobile-first approach
+- **Dark Theme** - Default dark theme UI design for better user experience
+
+### 🎨 UI Design Standards
+- **Default Theme**: Dark theme is the primary design approach
+- **Color Scheme**: Dark backgrounds with light text for optimal readability
+- **Glass Morphism**: Semi-transparent elements with backdrop blur effects
+- **Consistent Theming**: All components should follow dark theme patterns
+- **Accessibility**: Maintain proper contrast ratios (WCAG 2.1 AA compliance)
 
 ---
 
@@ -1277,6 +1285,60 @@ export const categoriesService = {
 ---
 
 ## 🎨 Styling & Components
+
+### 🌙 Dark Theme Implementation Guidelines
+
+**IMPORTANT**: All frontend components should be implemented with dark theme as the default design approach.
+
+#### Dark Theme Color Palette
+```css
+/* Primary Dark Theme Colors */
+--bg-primary: rgba(15, 23, 42, 0.95)        /* Main background */
+--bg-secondary: rgba(30, 41, 59, 0.9)       /* Secondary background */
+--bg-tertiary: rgba(51, 65, 85, 0.4)        /* Tertiary background */
+
+--text-primary: #f1f5f9                     /* Primary text */
+--text-secondary: #e2e8f0                   /* Secondary text */
+--text-muted: #94a3b8                       /* Muted text */
+
+--border-primary: rgba(71, 85, 105, 0.5)    /* Primary borders */
+--border-secondary: rgba(51, 65, 85, 0.3)   /* Secondary borders */
+
+/* Glass Morphism Effects */
+--glass-bg: rgba(30, 41, 59, 0.9)
+--glass-border: rgba(71, 85, 105, 0.4)
+--backdrop-blur: blur(8px)
+```
+
+#### Dark Theme Implementation Rules
+1. **Default Background**: Use dark gradients or semi-transparent dark colors
+2. **Text Contrast**: Ensure light text on dark backgrounds (minimum WCAG AA)
+3. **Glass Effects**: Apply `backdrop-filter: blur()` for modern glass morphism
+4. **Interactive States**: Enhance hover/focus states with subtle color shifts
+5. **Consistency**: All new components must follow dark theme patterns
+
+#### Component Examples
+```css
+/* Dark Theme Container */
+.dark-container {
+  background: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(71, 85, 105, 0.4);
+  color: #e2e8f0;
+}
+
+/* Dark Theme Button */
+.dark-btn {
+  background: rgba(51, 65, 85, 0.3);
+  color: #f1f5f9;
+  border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.dark-btn:hover {
+  background: rgba(71, 85, 105, 0.4);
+  transform: translateY(-1px);
+}
+```
 
 ### Tailwind Configuration (`tailwind.config.js`)
 ```javascript

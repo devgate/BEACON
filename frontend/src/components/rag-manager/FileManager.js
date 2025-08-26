@@ -32,19 +32,6 @@ const FileManager = ({
 
   return (
     <div className="file-manager-content">
-      {/* Add Document Button - Only show when files exist */}
-      {filteredData.length > 0 && (
-        <div className="file-manager-header">
-          <button 
-            className="btn-add-document"
-            onClick={handleUploadClick}
-            title={!selectedIndexId ? "Please select a knowledge base first" : "Add document to selected knowledge base"}
-          >
-            <FontAwesomeIcon icon={faPlus} /> Add Document
-          </button>
-        </div>
-      )}
-
       {/* Bulk Actions Bar */}
       <BulkActionsBar 
         selectedDocuments={selectedDocuments}

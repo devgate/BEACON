@@ -1,12 +1,14 @@
 import React, { useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faDatabase, faFileAlt, faUser } from '@fortawesome/free-solid-svg-icons';
+import { faDatabase, faFileAlt, faUser, faCog } from '@fortawesome/free-solid-svg-icons';
 import { useRAGManager } from '../hooks/useRAGManager';
 import { useRAGHandlers } from '../hooks/useRAGHandlers';
 import KnowledgeBuilder from '../components/rag-manager/KnowledgeBuilder';
 import KnowledgeFinder from '../components/rag-manager/KnowledgeFinder';
 import AIMaster from '../components/rag-manager/AIMaster';
 import FileManager from '../components/rag-manager/FileManager';
+import EnhancedFileManager from '../components/rag-manager/EnhancedFileManager';
+import KnowledgeBaseSettings from '../components/rag-manager/KnowledgeBaseSettings';
 import KnowledgeList from '../components/rag-manager/KnowledgeList';
 import UploadModal from '../components/rag-manager/UploadModal';
 import KnowledgeBaseModals from '../components/rag-manager/KnowledgeBaseModals';
@@ -89,9 +91,19 @@ const RAGManagerPage = () => {
           />
         );
 
+      case 'kb-settings':
+        return (
+          <KnowledgeBaseSettings
+            selectedIndexId={ragManager.selectedIndexId}
+            selectedIndex={ragManager.selectedIndex?.name}
+            onSettingsChange={ragHandlers.handleKBSettingsChange}
+            setNotification={ragManager.setNotification}
+          />
+        );
+
       default:
         return (
-          <FileManager 
+          <EnhancedFileManager 
             filteredData={ragManager.filteredData}
             selectedDocuments={ragManager.selectedDocuments}
             selectedIndexId={ragManager.selectedIndexId}
@@ -184,6 +196,14 @@ const RAGManagerPage = () => {
                 onClick={() => ragManager.setActiveDocTab('file-manager')}
               >
                 File Manager
+              </button>
+              <button 
+                className={`doc-tab ${ragManager.activeDocTab === 'kb-settings' ? 'active' : ''}`}
+                onClick={() => ragManager.setActiveDocTab('kb-settings')}
+                title="Configure embedding model and chunking strategy for selected knowledge base"
+                disabled={!ragManager.selectedIndexId}
+              >
+                Embedding & Chunking Strategy
               </button>
             </div>
 

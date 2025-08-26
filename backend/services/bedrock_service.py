@@ -388,6 +388,103 @@ class BedrockService:
             
         return models
     
+    def get_available_embedding_models(self) -> List[Dict]:
+        """
+        Get available embedding models from Bedrock
+        
+        Returns:
+            List of embedding model configurations
+        """
+        try:
+            # List all foundation models and filter for embedding models
+            response = self.bedrock_client.list_foundation_models()
+            embedding_models = []
+            
+            for model_summary in response.get('modelSummaries', []):
+                model_id = model_summary.get('modelId', '')
+                model_name = model_summary.get('modelName', '')
+                
+                # Filter for embedding models
+                if any(embed_keyword in model_id.lower() for embed_keyword in ['embed', 'embedding']):
+                    # Check if we have access to this model
+                    try:
+                        model_details = self.bedrock_client.get_foundation_model(
+                            modelIdentifier=model_id
+                        )
+                        
+                        # Extract model details
+                        details = model_details.get('modelDetails', {})
+                        
+                        embedding_models.append({
+                            'modelId': model_id,
+                            'modelName': model_name,
+                            'providerName': details.get('providerName', 'Unknown'),
+                            'modelStatus': details.get('modelLifecycle', {}).get('status', 'UNKNOWN'),
+                            'inputModalities': details.get('inputModalities', ['TEXT']),
+                            'outputModalities': details.get('outputModalities', ['EMBEDDINGS']),
+                            'customizationsSupported': details.get('customizationsSupported', []),
+                            'inferenceTypesSupported': details.get('inferenceTypesSupported', []),
+                        })
+                        logger.info(f"Found embedding model: {model_id}")
+                        
+                    except ClientError as e:
+                        logger.debug(f"No access to embedding model {model_id}: {e}")
+                        continue
+            
+            # If no models found through API, return known embedding models
+            if not embedding_models:
+                logger.warning("No embedding models found through API, returning known models")
+                embedding_models = [
+                    {
+                        'modelId': 'amazon.titan-embed-text-v1',
+                        'modelName': 'Titan Text Embeddings v1',
+                        'providerName': 'Amazon',
+                        'modelStatus': 'ACTIVE',
+                        'inputModalities': ['TEXT'],
+                        'outputModalities': ['EMBEDDINGS']
+                    },
+                    {
+                        'modelId': 'amazon.titan-embed-text-v2:0',
+                        'modelName': 'Titan Text Embeddings v2',
+                        'providerName': 'Amazon',
+                        'modelStatus': 'ACTIVE',
+                        'inputModalities': ['TEXT'],
+                        'outputModalities': ['EMBEDDINGS']
+                    },
+                    {
+                        'modelId': 'amazon.titan-embed-image-v1',
+                        'modelName': 'Titan Multimodal Embeddings',
+                        'providerName': 'Amazon',
+                        'modelStatus': 'ACTIVE',
+                        'inputModalities': ['TEXT', 'IMAGE'],
+                        'outputModalities': ['EMBEDDINGS']
+                    }
+                ]
+            
+            return embedding_models
+            
+        except Exception as e:
+            logger.error(f"Error fetching embedding models: {e}")
+            # Return default models on error
+            return [
+                {
+                    'modelId': 'amazon.titan-embed-text-v1',
+                    'modelName': 'Titan Text Embeddings v1',
+                    'providerName': 'Amazon',
+                    'modelStatus': 'ACTIVE',
+                    'inputModalities': ['TEXT'],
+                    'outputModalities': ['EMBEDDINGS']
+                },
+                {
+                    'modelId': 'amazon.titan-embed-text-v2:0',
+                    'modelName': 'Titan Text Embeddings v2',
+                    'providerName': 'Amazon',
+                    'modelStatus': 'ACTIVE',
+                    'inputModalities': ['TEXT'],
+                    'outputModalities': ['EMBEDDINGS']
+                }
+            ]
+    
     def get_model_by_id(self, model_id: str) -> Optional[BedrockModel]:
         """
         Get a specific model by ID, including inference profiles

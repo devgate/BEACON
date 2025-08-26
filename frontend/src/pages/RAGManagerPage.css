@@ -727,31 +727,83 @@
 
 .document-tabs {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 8px;
   border-bottom: 1px solid #334155;
+  position: relative;
+}
+
+.document-tabs .doc-tab:first-child {
+  margin-right: auto;
+}
+
+.document-tabs .doc-tab:last-child {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .doc-tab {
   background: transparent;
   border: none;
   color: #94a3b8;
-  padding: 6px 12px;
+  padding: 8px 16px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   transition: all 0.2s;
   border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.doc-tab:hover {
+.doc-tab:hover:not(:disabled) {
   color: #00d4ff;
 }
 
 .doc-tab.active {
   color: #00d4ff;
   border-bottom-color: #00d4ff;
+}
+
+.doc-tab:disabled {
+  color: #475569;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.doc-tab svg {
+  font-size: 12px;
+}
+
+
+/* Configuration Panel Wrapper */
+.config-panel-wrapper {
+  padding: 20px;
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.config-panel-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.config-panel-header h3 {
+  color: #e2e8f0;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.config-panel-header p {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0;
 }
 
 .doc-actions {

@@ -227,3 +227,7 @@ node_modules/
 
 # AWS Development Credentials (보안)
 .aws-dev-credentials
+
+
+# Claude.md 파일 자동 업데이트
+.claude-docs

@@ -47,6 +47,11 @@ export const bedrockService = {
     return response.data;
   },
 
+  async getEmbeddingModels() {
+    const response = await api.get('/embedding-models');
+    return response.data;
+  },
+
   async getHealth() {
     const response = await api.get('/bedrock/health');
     return response.data;

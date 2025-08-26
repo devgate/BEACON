@@ -430,6 +430,31 @@ export const useRAGHandlers = (ragManager) => {
     }
   };
 
+  // Knowledge Base Settings handler
+  const handleKBSettingsChange = async (settings) => {
+    try {
+      // In a real application, this would make an API call to save the settings
+      // For now, we're just using localStorage as shown in the KnowledgeBaseSettings component
+      
+      // Optionally trigger a notification or update
+      console.log('Knowledge base settings updated:', settings);
+      
+      // You could also trigger a reload of documents if needed
+      if (selectedIndexId) {
+        await loadDocumentsByIndex(selectedIndexId);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to save KB settings:', error);
+      setNotification({
+        message: '설정 저장에 실패했습니다.',
+        type: 'error'
+      });
+      return false;
+    }
+  };
+
   // Utility functions
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0';
@@ -468,6 +493,7 @@ export const useRAGHandlers = (ragManager) => {
     handleEditKB,
     handleSaveEditKB,
     handleDeleteKB,
+    handleKBSettingsChange,
     formatFileSize,
     formatDate
   };

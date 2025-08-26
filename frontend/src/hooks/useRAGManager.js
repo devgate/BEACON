@@ -343,6 +343,9 @@ export const useRAGManager = () => {
         }
       }));
 
+      // Force reload all documents to get the newly uploaded file
+      await loadAllDocuments();
+      // Also update the current index specifically
       await loadDocumentsByIndex(selectedIndexId);
       
       console.log(`File "${file.name}" uploaded and processed successfully`);

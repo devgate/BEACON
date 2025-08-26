@@ -1,6 +1,6 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrash, faSync } from '@fortawesome/free-solid-svg-icons';
+import { faTrash, faSync, faDownload } from '@fortawesome/free-solid-svg-icons';
 
 const DocumentTable = ({ 
   filteredData, 
@@ -10,7 +10,8 @@ const DocumentTable = ({
   handleDeleteDocument,
   handleReprocessDocument,
   formatFileSize,
-  formatDate 
+  formatDate,
+  onDownloadDocument
 }) => {
   return (
     <div className="document-table">
@@ -28,7 +29,6 @@ const DocumentTable = ({
             <th>File Name</th>
             <th>File Size</th>
             <th>Modified</th>
-            <th>Status</th>
             <th>Chunks</th>
             <th>Actions</th>
           </tr>
@@ -47,27 +47,33 @@ const DocumentTable = ({
               <td className="file-name" title={doc.name}>{doc.name}</td>
               <td>{typeof doc.size === 'number' ? formatFileSize(doc.size) : doc.size}</td>
               <td>{formatDate(doc.date)}</td>
-              <td>
-                <span className={`status-badge ${doc.status.toLowerCase()}`}>{doc.status}</span>
-              </td>
               <td>{doc.chunks}</td>
               <td>
-                <button 
-                  className="btn-delete"
-                  onClick={() => handleDeleteDocument(doc.originalDoc?.id || doc.id)}
-                  title="Delete file"
-                  style={{ marginRight: '4px' }}
-                >
-                  <FontAwesomeIcon icon={faTrash} />
-                </button>
-                <button 
-                  className="btn-delete"
-                  onClick={() => handleReprocessDocument(doc.originalDoc?.id || doc.id)}
-                  title="Reprocess file"
-                  style={{ borderColor: '#00d4ff', color: '#00d4ff' }}
-                >
-                  <FontAwesomeIcon icon={faSync} />
-                </button>
+                <div className="document-actions">
+                  {onDownloadDocument && (
+                    <button 
+                      className="action-btn download"
+                      onClick={() => onDownloadDocument(doc)}
+                      title="Download document"
+                    >
+                      <FontAwesomeIcon icon={faDownload} />
+                    </button>
+                  )}
+                  <button 
+                    className="action-btn reprocess"
+                    onClick={() => handleReprocessDocument(doc.originalDoc?.id || doc.id)}
+                    title="Reprocess file"
+                  >
+                    <FontAwesomeIcon icon={faSync} />
+                  </button>
+                  <button 
+                    className="action-btn delete"
+                    onClick={() => handleDeleteDocument(doc.originalDoc?.id || doc.id)}
+                    title="Delete file"
+                  >
+                    <FontAwesomeIcon icon={faTrash} />
+                  </button>
+                </div>
               </td>
             </tr>
           ))}

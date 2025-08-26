@@ -2,7 +2,7 @@
 BEACON Backend Application - Refactored Version
 Main application entry point with modular architecture
 """
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 import os
 import logging
@@ -49,6 +49,12 @@ def create_app():
     # Configure app settings
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
     app.config['UPLOAD_FOLDER'] = 'uploads'
+    
+    # Add static file route for document images
+    @app.route('/static/<path:filename>')
+    def static_files(filename):
+        """Serve static files (document images)"""
+        return send_from_directory('static', filename)
     
     # Initialize services
     app_context = initialize_services()
