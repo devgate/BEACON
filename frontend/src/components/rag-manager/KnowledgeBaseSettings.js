@@ -244,13 +244,38 @@ const KnowledgeBaseSettings = ({
         throw new Error('Document not found');
       }
       
-      // Use the actual document content
-      const documentText = selectedDoc.content || 'No content available for this document.';
+      // Use the actual document content with multiple fallback options
+      const documentText = selectedDoc.content || 
+                           selectedDoc.text || 
+                           selectedDoc.extracted_text ||
+                           selectedDoc.raw_content ||
+                           `샘플 문서 내용입니다. 이것은 ${selectedDoc.file_name || selectedDoc.title || '문서'}의 미리보기를 위한 예시 텍스트입니다. 
+                           실제 청킹 전략을 테스트하기 위해 여러 문장으로 구성되어 있습니다. 
+                           첫 번째 문단에는 기본적인 정보가 포함되어 있고, 두 번째 문단에는 더 상세한 내용이 들어있습니다.
+                           
+                           이 문서는 다양한 청킹 전략의 효과를 비교하기 위한 목적으로 작성되었습니다. 
+                           문장 기반 청킹은 자연스러운 경계를 유지하며, 단락 기반 청킹은 논리적 구조를 보존합니다.
+                           의미 기반 청킹은 내용의 맥락을 고려하여 분할하고, 슬라이딩 윈도우는 정보 손실을 최소화합니다.`;
+      
       setDocumentText(documentText);
       
+      console.log('Document loaded:', {
+        id: selectedDoc.id,
+        title: selectedDoc.title || selectedDoc.file_name,
+        contentLength: documentText.length,
+        hasContent: !!selectedDoc.content
+      });
+      
       // Generate preview chunks based on current settings
-      if (chunkingStrategy) {
-        generatePreviewChunks(documentText, chunkingStrategy, chunkSize, chunkOverlap);
+      const strategy = chunkingStrategy || chunkingStrategies[0]; // 기본 전략 사용
+      if (strategy) {
+        generatePreviewChunks(documentText, strategy, chunkSize, chunkOverlap);
+        // 전략이 설정되지 않았다면 기본값으로 설정
+        if (!chunkingStrategy) {
+          setChunkingStrategy(strategy);
+          setChunkSize(strategy.defaultSize);
+          setChunkOverlap(strategy.defaultOverlap);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch document text:', error);
@@ -265,7 +290,15 @@ const KnowledgeBaseSettings = ({
 
   // Enhanced chunking algorithms with sophisticated implementations
   const generatePreviewChunks = (text, strategy, size, overlap) => {
+    console.log('generatePreviewChunks called:', {
+      textLength: text?.length || 0,
+      strategyId: strategy?.id || 'none',
+      size,
+      overlap
+    });
+
     if (!text || !strategy) {
+      console.warn('Missing text or strategy for chunking preview');
       setPreviewChunks([]);
       return;
     }
@@ -292,31 +325,84 @@ const KnowledgeBaseSettings = ({
           break;
       }
 
+      console.log('Generated chunks:', {
+        totalChunks: chunks.length,
+        strategyUsed: strategy.id,
+        previewChunks: Math.min(chunks.length, 10),
+        targetSize: size,
+        targetOverlap: overlap,
+        actualTokens: chunks.map(c => c.tokens),
+        avgTokens: chunks.length > 0 ? Math.round(chunks.reduce((sum, c) => sum + c.tokens, 0) / chunks.length) : 0
+      });
+
       setPreviewChunks(chunks.slice(0, 10)); // Show first 10 chunks
     } catch (error) {
-      console.error('Error generating preview chunks:', error);
+      console.error('Error generating preview chunks:', error, {
+        strategy: strategy.id,
+        textLength: text.length,
+        size,
+        overlap
+      });
       setPreviewChunks([]);
+      
+      // 사용자에게 에러 알림
+      setNotification({
+        message: `청킹 생성 중 오류 발생: ${error.message}`,
+        type: 'error'
+      });
     }
   };
 
   const chunkByFixedSize = (text, size, overlap) => {
     const chunks = [];
     const words = text.split(/\s+/);
+    let currentPosition = 0;
     
-    for (let i = 0; i < words.length; i += size - overlap) {
-      const chunkEnd = Math.min(i + size, words.length);
-      const chunk = words.slice(i, chunkEnd).join(' ');
+    while (currentPosition < words.length) {
+      let currentChunk = '';
+      let currentTokens = 0;
+      let wordsInChunk = 0;
+      let chunkStartPosition = currentPosition;
       
-      if (chunk.trim()) {
+      // 토큰 수가 size에 도달할 때까지 단어를 추가
+      while (currentPosition < words.length && currentTokens < size) {
+        const nextWord = words[currentPosition];
+        const nextWordTokens = countTokens(nextWord);
+        
+        // 다음 단어를 추가했을 때 크기를 초과하지 않는지 확인
+        if (currentTokens + nextWordTokens <= size) {
+          currentChunk += (currentChunk ? ' ' : '') + nextWord;
+          currentTokens += nextWordTokens;
+          wordsInChunk++;
+          currentPosition++;
+        } else {
+          break;
+        }
+      }
+      
+      if (currentChunk.trim()) {
         chunks.push({
           id: chunks.length + 1,
-          text: chunk.trim(),
-          tokens: countTokens(chunk),
-          words: chunkEnd - i,
-          start_word: i,
-          end_word: chunkEnd,
+          text: currentChunk.trim(),
+          tokens: currentTokens,
+          words: wordsInChunk,
+          start_word: chunkStartPosition,
+          end_word: currentPosition,
           type: 'fixed-size'
         });
+      }
+      
+      // 오버랩 처리: 현재 위치에서 오버랩만큼 뒤로 이동
+      if (overlap > 0 && chunks.length > 0) {
+        // 오버랩 토큰 수만큼 단어 수를 역산
+        let overlapWords = Math.floor(wordsInChunk * (overlap / currentTokens));
+        overlapWords = Math.max(1, Math.min(overlapWords, wordsInChunk - 1));
+        currentPosition = Math.max(chunkStartPosition + 1, currentPosition - overlapWords);
+      }
+      
+      // 무한 루프 방지
+      if (currentPosition <= chunkStartPosition) {
+        currentPosition = chunkStartPosition + 1;
       }
     }
     
@@ -505,30 +591,71 @@ const KnowledgeBaseSettings = ({
   const chunkBySlidingWindow = (text, size, overlap) => {
     const words = text.split(/\s+/);
     const chunks = [];
-    const stepSize = Math.max(1, size - overlap);
-
-    for (let i = 0; i < words.length; i += stepSize) {
-      const chunkEnd = Math.min(i + size, words.length);
-      const chunkWords = words.slice(i, chunkEnd);
-      const chunk = chunkWords.join(' ');
+    let currentPosition = 0;
+    
+    while (currentPosition < words.length) {
+      let currentChunk = '';
+      let currentTokens = 0;
+      let wordsInChunk = 0;
+      let startPosition = currentPosition;
       
-      // Ensure minimum chunk size to avoid very small chunks at the end
-      if (chunk.trim() && chunkWords.length >= Math.floor(size * 0.3)) {
-        const actualOverlap = i > 0 ? Math.min(overlap, i) : 0;
+      // 토큰 수가 size에 도달할 때까지 단어를 추가
+      while (currentPosition < words.length && currentTokens < size) {
+        const nextWord = words[currentPosition];
+        const nextWordTokens = countTokens(nextWord);
+        
+        if (currentTokens + nextWordTokens <= size) {
+          currentChunk += (currentChunk ? ' ' : '') + nextWord;
+          currentTokens += nextWordTokens;
+          wordsInChunk++;
+          currentPosition++;
+        } else {
+          break;
+        }
+      }
+      
+      // 최소 크기 체크 (전체 크기의 30% 이상)
+      if (currentChunk.trim() && currentTokens >= Math.floor(size * 0.3)) {
+        // 오버랩 토큰 계산
+        let actualOverlapTokens = 0;
+        if (chunks.length > 0 && overlap > 0) {
+          const prevChunk = chunks[chunks.length - 1];
+          const overlapText = findOverlapText(prevChunk.text, currentChunk);
+          actualOverlapTokens = countTokens(overlapText);
+        }
         
         chunks.push({
           id: chunks.length + 1,
-          text: chunk.trim(),
-          tokens: countTokens(chunk),
-          words: chunkWords.length,
-          start_word: i,
-          end_word: chunkEnd,
-          overlap_words: actualOverlap,
-          overlap_percentage: actualOverlap > 0 ? Math.round((actualOverlap / chunkWords.length) * 100) : 0,
+          text: currentChunk.trim(),
+          tokens: currentTokens,
+          words: wordsInChunk,
+          start_word: startPosition,
+          end_word: currentPosition,
+          overlap_tokens: actualOverlapTokens,
+          overlap_percentage: actualOverlapTokens > 0 ? Math.round((actualOverlapTokens / currentTokens) * 100) : 0,
           type: 'sliding-window',
-          window_position: `${i + 1}-${chunkEnd}/${words.length}`,
-          completeness: chunkWords.length === size ? 1.0 : chunkWords.length / size
+          window_position: `${startPosition + 1}-${currentPosition}/${words.length}`,
+          completeness: currentTokens >= size ? 1.0 : currentTokens / size
         });
+      }
+      
+      // 다음 윈도우 위치 계산 (토큰 기반)
+      if (overlap > 0 && currentTokens > overlap) {
+        // 오버랩 토큰만큼 뒤로 이동
+        let targetOverlapTokens = Math.min(overlap, Math.floor(currentTokens * 0.8));
+        let overlapWords = Math.floor(wordsInChunk * (targetOverlapTokens / currentTokens));
+        overlapWords = Math.max(1, Math.min(overlapWords, wordsInChunk - 1));
+        
+        currentPosition = Math.max(startPosition + 1, currentPosition - overlapWords);
+      } else {
+        // 오버랩이 없거나 작은 경우, 현재 청크 크기의 절반만큼 전진
+        let stepWords = Math.max(1, Math.floor(wordsInChunk / 2));
+        currentPosition = startPosition + stepWords;
+      }
+      
+      // 무한 루프 방지
+      if (currentPosition <= startPosition) {
+        currentPosition = startPosition + 1;
       }
     }
 
@@ -536,6 +663,23 @@ const KnowledgeBaseSettings = ({
   };
 
   // Helper functions for enhanced chunking
+  
+  const findOverlapText = (prevText, currentText) => {
+    // 이전 청크와 현재 청크의 겹치는 부분 찾기
+    const prevWords = prevText.split(/\s+/);
+    const currentWords = currentText.split(/\s+/);
+    
+    let overlapLength = 0;
+    for (let i = 1; i <= Math.min(prevWords.length, currentWords.length); i++) {
+      const prevSuffix = prevWords.slice(-i).join(' ');
+      const currentPrefix = currentWords.slice(0, i).join(' ');
+      if (prevSuffix === currentPrefix) {
+        overlapLength = i;
+      }
+    }
+    
+    return overlapLength > 0 ? currentWords.slice(0, overlapLength).join(' ') : '';
+  };
 
   const splitIntoSentences = (text) => {
     // Improved sentence splitting that handles abbreviations and edge cases
@@ -826,8 +970,22 @@ const KnowledgeBaseSettings = ({
 
   // Regenerate chunks when strategy or parameters change
   useEffect(() => {
+    console.log('useEffect triggered for chunking preview:', {
+      hasDocumentText: !!documentText,
+      hasChunkingStrategy: !!chunkingStrategy,
+      chunkSize,
+      chunkOverlap,
+      strategyId: chunkingStrategy?.id
+    });
+    
     if (documentText && chunkingStrategy) {
+      console.log('Regenerating chunks due to parameter change');
       generatePreviewChunks(documentText, chunkingStrategy, chunkSize, chunkOverlap);
+    } else {
+      console.log('Skipping chunk generation:', {
+        documentText: !!documentText,
+        chunkingStrategy: !!chunkingStrategy
+      });
     }
   }, [chunkingStrategy, chunkSize, chunkOverlap, documentText]);
 
@@ -896,6 +1054,7 @@ const KnowledgeBaseSettings = ({
   };
 
   const handleChunkingStrategyChange = (strategyId) => {
+    console.log('Changing chunking strategy to:', strategyId);
     const strategy = chunkingStrategies.find(s => s.id === strategyId);
     if (strategy) {
       setChunkingStrategy(strategy);
@@ -903,6 +1062,13 @@ const KnowledgeBaseSettings = ({
       setChunkSize(strategy.defaultSize);
       setChunkOverlap(strategy.defaultOverlap);
       setHasChanges(true);
+      
+      console.log('Strategy changed:', {
+        id: strategy.id,
+        name: strategy.name,
+        defaultSize: strategy.defaultSize,
+        defaultOverlap: strategy.defaultOverlap
+      });
     }
   };
 
@@ -913,8 +1079,18 @@ const KnowledgeBaseSettings = ({
         chunkingStrategy.sizeRange.min,
         Math.min(chunkingStrategy.sizeRange.max, numValue)
       );
+      
+      console.log('Chunk size changing from', chunkSize, 'to', clampedValue);
       setChunkSize(clampedValue);
       setHasChanges(true);
+      
+      // 상태 업데이트 후 청킹 미리보기 강제 실행
+      if (documentText && chunkingStrategy) {
+        setTimeout(() => {
+          console.log('Force regenerating chunks after chunk size change');
+          generatePreviewChunks(documentText, chunkingStrategy, clampedValue, chunkOverlap);
+        }, 0);
+      }
     }
   };
 
@@ -923,8 +1099,18 @@ const KnowledgeBaseSettings = ({
     // Overlap should be less than chunk size
     const maxOverlap = Math.floor(chunkSize * 0.5);
     const clampedValue = Math.max(0, Math.min(maxOverlap, numValue));
+    
+    console.log('Chunk overlap changing from', chunkOverlap, 'to', clampedValue);
     setChunkOverlap(clampedValue);
     setHasChanges(true);
+    
+    // 상태 업데이트 후 청킹 미리보기 강제 실행
+    if (documentText && chunkingStrategy) {
+      setTimeout(() => {
+        console.log('Force regenerating chunks after overlap change');
+        generatePreviewChunks(documentText, chunkingStrategy, chunkSize, clampedValue);
+      }, 0);
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -986,14 +1172,6 @@ const KnowledgeBaseSettings = ({
     }
   };
 
-  // Calculate estimated chunks for preview
-  const estimateChunks = () => {
-    if (!chunkSize) return 0;
-    // Rough estimate: average document has ~10000 tokens
-    const avgDocumentTokens = 10000;
-    const effectiveChunkSize = chunkSize - chunkOverlap;
-    return Math.ceil(avgDocumentTokens / effectiveChunkSize);
-  };
 
   if (!selectedIndexId) {
     return (
@@ -1151,6 +1329,7 @@ const KnowledgeBaseSettings = ({
                       max={chunkingStrategy.sizeRange.max}
                       value={chunkSize}
                       onChange={(e) => handleChunkSizeChange(e.target.value)}
+                      onInput={(e) => handleChunkSizeChange(e.target.value)}
                       className="param-slider"
                     />
                     <input
@@ -1183,6 +1362,7 @@ const KnowledgeBaseSettings = ({
                       max={Math.floor(chunkSize * 0.5)}
                       value={chunkOverlap}
                       onChange={(e) => handleChunkOverlapChange(e.target.value)}
+                      onInput={(e) => handleChunkOverlapChange(e.target.value)}
                       className="param-slider"
                     />
                     <input
@@ -1200,25 +1380,6 @@ const KnowledgeBaseSettings = ({
                 </div>
               </div>
 
-              <div className="chunking-preview">
-                <h4>예상 결과</h4>
-                <div className="preview-stats">
-                  <div className="stat-item">
-                    <span className="stat-label">예상 청크 수:</span>
-                    <span className="stat-value">~{estimateChunks()}개</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">유효 청크 크기:</span>
-                    <span className="stat-value">{chunkSize - chunkOverlap} 토큰</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">중첩률:</span>
-                    <span className="stat-value">
-                      {chunkSize > 0 ? Math.round((chunkOverlap / chunkSize) * 100) : 0}%
-                    </span>
-                  </div>
-                </div>
-              </div>
             </>
           )}
         </div>
