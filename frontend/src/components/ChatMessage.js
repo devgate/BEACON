@@ -77,26 +77,7 @@ const ChatMessage = ({ message }) => {
                       )}
                     </div>
                   </div>
-                  {/* 
-                  <div className="doc-actions">
-                    {doc.has_file && (
-                      <button 
-                        className="action-btn download-btn"
-                        onClick={() => handleDownload(doc.id, doc.title)}
-                        title="파일 다운로드"
-                      >
-                        <FontAwesomeIcon icon={faDownload} />
-                      </button>
-                    )}
-                    <button 
-                      className="action-btn view-btn"
-                      onClick={() => handleViewDocument(doc)}
-                      title="문서 상세 보기"
-                    >
-                      <FontAwesomeIcon icon={faExternalLinkAlt} />
-                    </button>
-                  </div>
-                   */}
+            
                 </div>
                 {doc.content_preview && (
                   <div className="doc-preview">

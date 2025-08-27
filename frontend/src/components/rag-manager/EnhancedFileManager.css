@@ -343,7 +343,7 @@
   transform: translateY(-1px);
 }
 
-.action-btn.download {
+/* .action-btn.download {
   background: rgba(16, 185, 129, 0.1);
   color: #10b981;
   border-color: rgba(16, 185, 129, 0.2);
@@ -353,9 +353,9 @@
   background: rgba(16, 185, 129, 0.2);
   color: #059669;
   border-color: rgba(16, 185, 129, 0.3);
-}
+} */
 
-.action-btn.reprocess {
+/* .action-btn.reprocess {
   background: rgba(245, 158, 11, 0.1);
   color: #f59e0b;
   border-color: rgba(245, 158, 11, 0.2);
@@ -365,6 +365,18 @@
   background: rgba(245, 158, 11, 0.2);
   color: #d97706;
   border-color: rgba(245, 158, 11, 0.3);
+} */
+
+.action-btn.reprocess {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.action-btn.reprocess:hover {
+  background: rgba(16, 185, 129, 0.2);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .action-btn.delete {

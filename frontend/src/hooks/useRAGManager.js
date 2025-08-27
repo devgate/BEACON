@@ -426,6 +426,7 @@ export const useRAGManager = () => {
   return {
     // State
     documents,
+    setDocuments,
     knowledgeBases,
     activeTab,
     setActiveTab,

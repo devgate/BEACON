@@ -427,12 +427,13 @@ def _process_with_chroma(text_content, filename, doc_id, chunk_strategy,
         logger.error(f"Failed to process document with Chroma DB: {e}")
         return {'success': False, 'error': str(e)}
 
-@documents_bp.route('/api/documents/<int:doc_id>', methods=['DELETE'])
+@documents_bp.route('/api/documents/<doc_id>', methods=['DELETE'])
 def delete_document(doc_id):
     """Delete a document"""
     global documents
     
-    doc_to_delete = next((d for d in documents if d['id'] == doc_id), None)
+    # Handle both string and integer document IDs
+    doc_to_delete = next((d for d in documents if str(d['id']) == str(doc_id)), None)
     
     if not doc_to_delete:
         return jsonify({'error': '문서를 찾을 수 없습니다.'}), 404
@@ -492,7 +493,7 @@ def delete_document(doc_id):
                 logger.error(f"Failed to delete from ChromaDB: {e}")
         
         # Remove from documents list
-        documents[:] = [d for d in documents if d['id'] != doc_id]
+        documents[:] = [d for d in documents if str(d['id']) != str(doc_id)]
         
         return jsonify({
             'success': True,
@@ -520,7 +521,8 @@ def delete_multiple_documents():
         deleted_docs = []
         
         for doc_id in document_ids:
-            doc_to_delete = next((d for d in documents if d['id'] == doc_id), None)
+            # Handle both string and integer document IDs
+            doc_to_delete = next((d for d in documents if str(d['id']) == str(doc_id)), None)
             if not doc_to_delete:
                 continue
             
@@ -561,7 +563,7 @@ def delete_multiple_documents():
             deleted_count += 1
         
         # Remove documents from list
-        documents[:] = [d for d in documents if d['id'] not in document_ids]
+        documents[:] = [d for d in documents if str(d['id']) not in [str(doc_id) for doc_id in document_ids]]
         
         return jsonify({
             'success': True,

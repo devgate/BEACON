@@ -181,8 +181,8 @@ export const useRAGHandlers = (ragManager) => {
       const result = await documentService.deleteDocument(docId);
       
       // 삭제 성공 여부와 관계없이 UI 업데이트
-      setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
-      setSelectedDocuments(prev => prev.filter(id => id !== docId));
+      setDocuments(prevDocs => prevDocs.filter(doc => String(doc.id) !== String(docId)));
+      setSelectedDocuments(prev => prev.filter(id => String(id) !== String(docId)));
       
       // 성공 메시지 표시
       setNotification({ 

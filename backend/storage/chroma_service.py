@@ -198,19 +198,33 @@ class ChromaService:
                 parts = document_id.split("_doc_")
                 kb_id = parts[0].replace("kb_", "")
                 
-                # Get the specific collection
-                collection = self.collections.get(kb_id)
-                if collection:
-                    # Delete from specific collection
-                    results = collection.get(
-                        where={"document_id": document_id},
-                        include=["metadatas"]
-                    )
+                # Get or create the specific collection
+                try:
+                    collection = self.client.get_collection(name=kb_id)
+                    if collection:
+                        # Delete from specific collection
+                        results = collection.get(
+                            where={"document_id": document_id},
+                            include=["metadatas"]
+                        )
+                        
+                        if results and results.get("ids"):
+                            collection.delete(ids=results["ids"])
+                            logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id} from KB {kb_id}")
+                            return True
+                except Exception as e:
+                    logger.debug(f"Failed to get collection {kb_id}: {e}")
                     
-                    if results["ids"]:
-                        collection.delete(ids=results["ids"])
-                        logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id} from KB {kb_id}")
+                # Also try deleting with direct ID pattern matching
+                try:
+                    collection = self.client.get_collection(name=kb_id)
+                    if collection:
+                        # Try to delete by direct ID match
+                        collection.delete(ids=[document_id])
+                        logger.info(f"Deleted document {document_id} directly from KB {kb_id}")
                         return True
+                except Exception as e:
+                    logger.debug(f"Direct deletion failed for {document_id}: {e}")
             
             # Fall back to default collection
             results = self.collection.get(
