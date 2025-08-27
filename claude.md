@@ -508,6 +508,14 @@ cd deploy/dev/local
 ./test.sh
 ```
 
+### ⚠️ Development Server Rules
+**IMPORTANT**: Do not start additional server instances when services are already running on localhost.
+
+- **Check Service Status**: Always verify if services are running on localhost ports before starting new instances
+- **Server Conflict Prevention**: Never run `python app.py` or `npm start` if services are already active on target ports
+- **Running Service Detection**: Use port checks (curl, netstat, lsof) to detect active services
+- **Service Management**: Use existing running services for testing and development instead of creating new instances
+
 ---
 
 ## 🌐 API Reference
