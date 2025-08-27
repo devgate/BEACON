@@ -28,6 +28,7 @@ class ChromaService:
         self.persist_directory = persist_directory
         self.client = None
         self.collection = None
+        self.collections = {}  # Store multiple collections by index_id
         self._initialize_client()
     
     def _initialize_client(self):
@@ -60,7 +61,7 @@ class ChromaService:
         metadata: Dict[str, Any] = None
     ) -> bool:
         """
-        Add document chunks with embeddings to Chroma DB
+        Add document chunks to default collection (legacy support)
         
         Args:
             chunks: List of text chunks
@@ -72,6 +73,8 @@ class ChromaService:
         Returns:
             bool: Success status
         """
+        logger.warning(f"Using legacy add_document_chunks for {document_name}. Consider using add_document_to_kb instead.")
+        
         try:
             if len(chunks) != len(embeddings):
                 raise ValueError("Number of chunks must match number of embeddings")
@@ -133,23 +136,33 @@ class ChromaService:
             Dict containing search results
         """
         try:
-            # Prepare query filter
+            # Determine which collection to search
+            collection_to_search = self.collection  # Default collection
             where_filter = None
+            
             if document_filter:
-                # Support prefix matching for knowledge base filtering
-                if document_filter.endswith("_doc_"):
-                    # For prefix matching, we'll need to get all results first and filter manually
-                    # Or use knowledge base ID in metadata instead
-                    logger.info(f"Using knowledge base prefix filter: {document_filter}")
-                    # Extract knowledge base ID from filter
+                # Check if it's a knowledge base filter
+                if document_filter.startswith("kb_") and "_doc_" in document_filter:
+                    # Extract knowledge base ID
+                    kb_id = document_filter.split("_doc_")[0].replace("kb_", "")
+                    logger.info(f"Searching in knowledge base collection: {kb_id}")
+                    
+                    # Get or create the specific collection
+                    collection_to_search = self.get_or_create_collection(kb_id)
+                    if not collection_to_search:
+                        logger.warning(f"Collection {kb_id} not found, using default collection")
+                        collection_to_search = self.collection
+                        where_filter = {"index_id": kb_id}
+                elif document_filter.endswith("_doc_"):
+                    # For prefix matching in default collection
                     kb_id = document_filter.replace("kb_", "").replace("_doc_", "")
                     where_filter = {"index_id": kb_id}
                 else:
                     # Exact matching for specific document
                     where_filter = {"document_id": document_filter}
             
-            # Perform similarity search
-            results = self.collection.query(
+            # Perform similarity search on the appropriate collection
+            results = collection_to_search.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
                 where=where_filter if where_filter else None,
@@ -182,7 +195,27 @@ class ChromaService:
             bool: Success status
         """
         try:
-            # Get all chunks for this document
+            # Check if document_id contains knowledge base prefix
+            if document_id.startswith("kb_") and "_doc_" in document_id:
+                # Extract knowledge base ID
+                parts = document_id.split("_doc_")
+                kb_id = parts[0].replace("kb_", "")
+                
+                # Get the specific collection
+                collection = self.collections.get(kb_id)
+                if collection:
+                    # Delete from specific collection
+                    results = collection.get(
+                        where={"document_id": document_id},
+                        include=["metadatas"]
+                    )
+                    
+                    if results["ids"]:
+                        collection.delete(ids=results["ids"])
+                        logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id} from KB {kb_id}")
+                        return True
+            
+            # Fall back to default collection
             results = self.collection.get(
                 where={"document_id": document_id},
                 include=["metadatas"]
@@ -203,7 +236,7 @@ class ChromaService:
     
     def get_document_info(self, document_id: str) -> Dict[str, Any]:
         """
-        Get information about a specific document
+        Get information about a specific document across all collections
         
         Args:
             document_id: Document ID to query
@@ -212,6 +245,32 @@ class ChromaService:
             Dict containing document information
         """
         try:
+            # Check if document_id contains knowledge base prefix
+            if document_id.startswith("kb_") and "_doc_" in document_id:
+                # Extract knowledge base ID
+                parts = document_id.split("_doc_")
+                kb_id = parts[0].replace("kb_", "")
+                
+                # Get the specific collection
+                collection = self.collections.get(kb_id)
+                if collection:
+                    results = collection.get(
+                        where={"document_id": document_id},
+                        include=["metadatas"]
+                    )
+                    
+                    if results["ids"]:
+                        metadatas = results["metadatas"]
+                        return {
+                            "exists": True,
+                            "chunk_count": len(results["ids"]),
+                            "document_name": metadatas[0].get("document_name", "Unknown"),
+                            "created_at": metadatas[0].get("created_at", "Unknown"),
+                            "total_size": sum(meta.get("chunk_size", 0) for meta in metadatas),
+                            "knowledge_base_id": kb_id
+                        }
+            
+            # Fall back to default collection
             results = self.collection.get(
                 where={"document_id": document_id},
                 include=["metadatas"]
@@ -239,35 +298,55 @@ class ChromaService:
     
     def list_all_documents(self) -> List[Dict[str, Any]]:
         """
-        List all documents in the collection
+        List all documents across all collections
         
         Returns:
             List of document information
         """
         try:
-            # Get all documents
+            all_docs = {}
+            
+            # Get documents from default collection
             results = self.collection.get(include=["metadatas"])
+            if results["ids"]:
+                for metadata in results["metadatas"]:
+                    doc_id = metadata.get("document_id")
+                    if doc_id not in all_docs:
+                        all_docs[doc_id] = {
+                            "document_id": doc_id,
+                            "document_name": metadata.get("document_name", "Unknown"),
+                            "created_at": metadata.get("created_at", "Unknown"),
+                            "chunk_count": 0,
+                            "total_size": 0,
+                            "collection": "documents"
+                        }
+                    
+                    all_docs[doc_id]["chunk_count"] += 1
+                    all_docs[doc_id]["total_size"] += metadata.get("chunk_size", 0)
             
-            if not results["ids"]:
-                return []
+            # Get documents from knowledge base collections
+            for kb_id, collection in self.collections.items():
+                try:
+                    kb_results = collection.get(include=["metadatas"])
+                    if kb_results["ids"]:
+                        for metadata in kb_results["metadatas"]:
+                            doc_id = metadata.get("document_id")
+                            if doc_id not in all_docs:
+                                all_docs[doc_id] = {
+                                    "document_id": doc_id,
+                                    "document_name": metadata.get("document_name", "Unknown"),
+                                    "created_at": metadata.get("created_at", "Unknown"),
+                                    "chunk_count": 0,
+                                    "total_size": 0,
+                                    "collection": kb_id
+                                }
+                            
+                            all_docs[doc_id]["chunk_count"] += 1
+                            all_docs[doc_id]["total_size"] += metadata.get("chunk_size", 0)
+                except Exception as e:
+                    logger.warning(f"Could not access collection {kb_id}: {e}")
             
-            # Group by document_id
-            docs_by_id = {}
-            for metadata in results["metadatas"]:
-                doc_id = metadata.get("document_id")
-                if doc_id not in docs_by_id:
-                    docs_by_id[doc_id] = {
-                        "document_id": doc_id,
-                        "document_name": metadata.get("document_name", "Unknown"),
-                        "created_at": metadata.get("created_at", "Unknown"),
-                        "chunk_count": 0,
-                        "total_size": 0
-                    }
-                
-                docs_by_id[doc_id]["chunk_count"] += 1
-                docs_by_id[doc_id]["total_size"] += metadata.get("chunk_size", 0)
-            
-            return list(docs_by_id.values())
+            return list(all_docs.values())
             
         except Exception as e:
             logger.error(f"Failed to list documents: {str(e)}")
@@ -275,19 +354,37 @@ class ChromaService:
     
     def get_collection_stats(self) -> Dict[str, Any]:
         """
-        Get statistics about the collection
+        Get statistics about all collections
         
         Returns:
             Dict containing collection statistics
         """
         try:
-            total_count = self.collection.count()
+            # Count from default collection
+            default_count = self.collection.count()
+            
+            # Count from knowledge base collections
+            kb_stats = {}
+            total_kb_chunks = 0
+            
+            for kb_id, collection in self.collections.items():
+                try:
+                    kb_count = collection.count()
+                    kb_stats[kb_id] = kb_count
+                    total_kb_chunks += kb_count
+                except Exception as e:
+                    logger.warning(f"Could not get stats for collection {kb_id}: {e}")
+                    kb_stats[kb_id] = 0
+            
             documents = self.list_all_documents()
             
             stats = {
-                "total_chunks": total_count,
+                "total_chunks": default_count + total_kb_chunks,
+                "default_collection_chunks": default_count,
+                "knowledge_base_collections": kb_stats,
+                "total_knowledge_bases": len(self.collections),
                 "total_documents": len(documents),
-                "average_chunks_per_document": total_count / len(documents) if documents else 0,
+                "average_chunks_per_document": (default_count + total_kb_chunks) / len(documents) if documents else 0,
                 "total_text_size": sum(doc.get("total_size", 0) for doc in documents)
             }
             
@@ -299,22 +396,23 @@ class ChromaService:
     
     def clear_collection(self) -> bool:
         """
-        Clear all documents from the collection (for testing purposes)
+        Clear all documents from default collection only (for testing purposes)
         
         Returns:
             bool: Success status
         """
+        logger.warning("Clearing default collection only. Knowledge base collections remain intact.")
         try:
-            # Get all document IDs
+            # Get all document IDs from default collection
             all_results = self.collection.get(include=[])
             
             if all_results["ids"]:
                 # Delete all documents
                 self.collection.delete(ids=all_results["ids"])
-                logger.info(f"Cleared {len(all_results['ids'])} documents from collection")
+                logger.info(f"Cleared {len(all_results['ids'])} documents from default collection")
                 return True
             else:
-                logger.info("Collection is already empty")
+                logger.info("Default collection is already empty")
                 return True
                 
         except Exception as e:
@@ -323,27 +421,167 @@ class ChromaService:
     
     def reset_collection(self) -> bool:
         """
-        Reset the collection by deleting and recreating it
+        Reset default collection only (for testing purposes)
         
         Returns:
             bool: Success status
         """
+        logger.warning("Resetting default collection only. Knowledge base collections remain intact.")
         try:
-            # Delete existing collection
+            # Delete existing default collection
             self.client.delete_collection("documents")
-            logger.info("Deleted existing collection")
+            logger.info("Deleted existing default collection")
             
-            # Recreate collection
+            # Recreate default collection
             self.collection = self.client.get_or_create_collection(
                 name="documents",
                 metadata={"description": "Document embeddings for RAG system"}
             )
-            logger.info("Created new empty collection")
+            logger.info("Created new empty default collection")
             
             return True
             
         except Exception as e:
             logger.error(f"Failed to reset collection: {str(e)}")
+            return False
+    
+    def create_collection_for_kb(self, index_id: str) -> bool:
+        """
+        Create a dedicated collection for a knowledge base
+        
+        Args:
+            index_id: Knowledge base index ID
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Create collection with index_id as name
+            collection = self.client.get_or_create_collection(
+                name=index_id,
+                metadata={"description": f"Document embeddings for knowledge base {index_id}"}
+            )
+            
+            # Store collection reference
+            self.collections[index_id] = collection
+            logger.info(f"Created ChromaDB collection for knowledge base: {index_id}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to create collection for {index_id}: {str(e)}")
+            return False
+    
+    def delete_collection_for_kb(self, index_id: str) -> bool:
+        """
+        Delete a knowledge base collection
+        
+        Args:
+            index_id: Knowledge base index ID
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Delete collection
+            self.client.delete_collection(index_id)
+            
+            # Remove from collections dict
+            if index_id in self.collections:
+                del self.collections[index_id]
+            
+            logger.info(f"Deleted ChromaDB collection for knowledge base: {index_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete collection for {index_id}: {str(e)}")
+            return False
+    
+    def get_or_create_collection(self, index_id: str):
+        """
+        Get or create a collection for a knowledge base
+        
+        Args:
+            index_id: Knowledge base index ID
+            
+        Returns:
+            Collection object or None
+        """
+        try:
+            if index_id not in self.collections:
+                collection = self.client.get_or_create_collection(
+                    name=index_id,
+                    metadata={"description": f"Document embeddings for knowledge base {index_id}"}
+                )
+                self.collections[index_id] = collection
+            
+            return self.collections[index_id]
+            
+        except Exception as e:
+            logger.error(f"Failed to get/create collection for {index_id}: {str(e)}")
+            return None
+    
+    def add_document_to_kb(self, chunks: List[str], embeddings: List[List[float]], 
+                           document_id: str, document_name: str, index_id: str,
+                           metadata: Dict[str, Any] = None) -> bool:
+        """
+        Add document to a specific knowledge base collection
+        
+        Args:
+            chunks: List of text chunks
+            embeddings: List of embedding vectors
+            document_id: Unique document identifier
+            document_name: Original document name
+            index_id: Knowledge base index ID
+            metadata: Additional metadata for the document
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get or create collection for this knowledge base
+            collection = self.get_or_create_collection(index_id)
+            if not collection:
+                return False
+            
+            # Prepare chunk IDs and metadata
+            chunk_ids = []
+            chunk_metadatas = []
+            
+            for i, chunk in enumerate(chunks):
+                chunk_id = f"{document_id}_chunk_{i}"
+                chunk_ids.append(chunk_id)
+                
+                # Create metadata for each chunk
+                chunk_metadata = {
+                    "document_id": document_id,
+                    "document_name": document_name,
+                    "chunk_index": i,
+                    "chunk_size": len(chunk),
+                    "created_at": datetime.now().isoformat(),
+                    "chunk_hash": hashlib.md5(chunk.encode()).hexdigest(),
+                    "index_id": index_id
+                }
+                
+                # Add custom metadata if provided
+                if metadata:
+                    chunk_metadata.update(metadata)
+                
+                chunk_metadatas.append(chunk_metadata)
+            
+            # Add to collection
+            collection.add(
+                embeddings=embeddings,
+                documents=chunks,
+                metadatas=chunk_metadatas,
+                ids=chunk_ids
+            )
+            
+            logger.info(f"Added {len(chunks)} chunks for document {document_name} to KB {index_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to add document chunks to KB {index_id}: {str(e)}")
             return False
 
 

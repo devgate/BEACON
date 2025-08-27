@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 
 const KnowledgeBaseModals = ({
   showNewKBModal,
@@ -15,6 +15,35 @@ const KnowledgeBaseModals = ({
   handleSaveEditKB,
   loading
 }) => {
+  const [idError, setIdError] = useState('');
+
+  // ID 형식 검증 함수
+  const validateIndexId = (id) => {
+    // 영어와 언더스코어만 허용, prefix_name 형식
+    const pattern = /^[a-zA-Z]+_[a-zA-Z0-9]+$/;
+    return pattern.test(id);
+  };
+
+  // ID 입력 시 검증
+  const handleIdChange = (e) => {
+    const newId = e.target.value;
+    setNewKBData({...newKBData, id: newId});
+    
+    if (newId && !validateIndexId(newId)) {
+      setIdError('ID는 영어로 prefix_name 형식을 따라야 합니다 (예: manual_collection)');
+    } else {
+      setIdError('');
+    }
+  };
+
+  // 저장 버튼 클릭 시 검증
+  const handleSave = () => {
+    if (!newKBData.id || !validateIndexId(newKBData.id)) {
+      setIdError('올바른 ID 형식을 입력해주세요 (예: manual_collection)');
+      return;
+    }
+    handleSaveNewKB();
+  };
   return (
     <>
       {/* New Knowledge Base Modal */}
@@ -47,11 +76,20 @@ const KnowledgeBaseModals = ({
                 <input
                   id="newKBId"
                   type="text"
-                  className="form-input"
+                  className={`form-input ${idError ? 'error-border' : ''}`}
                   value={newKBData.id}
-                  onChange={(e) => setNewKBData({...newKBData, id: e.target.value})}
+                  onChange={handleIdChange}
                   placeholder="저장소 ID를 입력하세요"
                 />
+                <small className="form-hint">
+                  예시: manual_collection, finance_collection, FAQ_collection
+                </small>
+                {idError && (
+                  <div className="error-message">
+                    <FontAwesomeIcon icon={faExclamationTriangle} className="error-icon" />
+                    {idError}
+                  </div>
+                )}
               </div>
             </div>
             <div className="kb-modal-footer">
@@ -63,8 +101,8 @@ const KnowledgeBaseModals = ({
               </button>
               <button 
                 className="btn-save"
-                onClick={handleSaveNewKB}
-                disabled={loading}
+                onClick={handleSave}
+                disabled={loading || !newKBData.name || !newKBData.id}
               >
                 {loading ? '생성 중...' : '생성'}
               </button>

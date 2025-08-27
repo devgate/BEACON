@@ -116,6 +116,7 @@ def upload_file():
     chunk_strategy = request.form.get('chunk_strategy', 'sentence')
     chunk_size = int(request.form.get('chunk_size', 1000))
     chunk_overlap = int(request.form.get('chunk_overlap', 100))
+    index_id = request.form.get('index_id')  # Get knowledge base index ID
     
     if file and allowed_file(file.filename):
         processing_start_time = time.time()
@@ -168,6 +169,7 @@ def upload_file():
                 'file_path': file_path,
                 'original_filename': file.filename,
                 'category_id': category_id,
+                'index_id': index_id,  # Add knowledge base ID
                 'extraction_metadata': extraction_metadata,
                 'uploaded_at': datetime.now().isoformat(),
                 'file_size': os.path.getsize(file_path)
@@ -180,7 +182,7 @@ def upload_file():
                 chroma_processing_result = _process_with_chroma(
                     text_content, filename, document_counter,
                     chunk_strategy, chunk_size, chunk_overlap,
-                    category_id, extraction_metadata, file.filename
+                    category_id, extraction_metadata, file.filename, index_id
                 )
                 if chroma_processing_result and chroma_processing_result['success']:
                     new_doc['chunk_count'] = chroma_processing_result['chunks_created']
@@ -248,10 +250,10 @@ def upload_file():
 
 def _process_with_chroma(text_content, filename, doc_id, chunk_strategy, 
                          chunk_size, chunk_overlap, category_id, 
-                         extraction_metadata, original_filename):
+                         extraction_metadata, original_filename, index_id=None):
     """Process document with ChromaDB"""
     try:
-        logger.info(f"Processing document with Chroma DB: {filename}")
+        logger.info(f"Processing document with Chroma DB: {filename} for KB: {index_id}")
         
         # Generate chunks
         if DocumentChunker:
@@ -288,20 +290,39 @@ def _process_with_chroma(text_content, filename, doc_id, chunk_strategy,
         embeddings = generate_embeddings(chunks)
         
         # Store in Chroma DB
-        document_id = f"doc_{doc_id}"
-        success = chroma_service.add_document_chunks(
-            chunks=chunks,
-            embeddings=embeddings,
-            document_id=document_id,
-            document_name=filename,
-            metadata={
-                'category_id': category_id,
-                'chunk_strategy': chunk_strategy,
-                'chunk_size': chunk_size,
-                'file_extension': extraction_metadata.get('file_extension', ''),
-                'original_filename': original_filename
-            }
-        )
+        if index_id:
+            # Store in specific knowledge base collection
+            document_id = f"kb_{index_id}_doc_{doc_id}"
+            success = chroma_service.add_document_to_kb(
+                chunks=chunks,
+                embeddings=embeddings,
+                document_id=document_id,
+                document_name=filename,
+                index_id=index_id,
+                metadata={
+                    'category_id': category_id,
+                    'chunk_strategy': chunk_strategy,
+                    'chunk_size': chunk_size,
+                    'file_extension': extraction_metadata.get('file_extension', ''),
+                    'original_filename': original_filename
+                }
+            )
+        else:
+            # Store in default collection
+            document_id = f"doc_{doc_id}"
+            success = chroma_service.add_document_chunks(
+                chunks=chunks,
+                embeddings=embeddings,
+                document_id=document_id,
+                document_name=filename,
+                metadata={
+                    'category_id': category_id,
+                    'chunk_strategy': chunk_strategy,
+                    'chunk_size': chunk_size,
+                    'file_extension': extraction_metadata.get('file_extension', ''),
+                    'original_filename': original_filename
+                }
+            )
         
         result = {
             'success': success,

@@ -69,6 +69,12 @@ def create_knowledge_base():
         if any(kb['id'] == kb_id for kb in knowledge_bases_storage):
             return jsonify({'error': 'Knowledge base ID already exists'}), 400
         
+        # Validate ID format (prefix_name)
+        import re
+        pattern = r'^[a-zA-Z]+_[a-zA-Z0-9]+$'
+        if not re.match(pattern, kb_id):
+            return jsonify({'error': 'Index ID must follow the pattern prefix_name (e.g., manual_collection)'}), 400
+        
         new_kb = {
             'id': kb_id,
             'name': name,
@@ -76,6 +82,15 @@ def create_knowledge_base():
             'status': 'active',
             'created_at': datetime.now().isoformat()
         }
+        
+        # Create ChromaDB collection for this knowledge base
+        if CHROMA_ENABLED and chroma_service:
+            success = chroma_service.create_collection_for_kb(kb_id)
+            if success:
+                logger.info(f"ChromaDB collection created for KB: {kb_id}")
+                new_kb['chroma_collection'] = kb_id
+            else:
+                logger.warning(f"Failed to create ChromaDB collection for KB: {kb_id}")
         
         knowledge_bases_storage.append(new_kb)
         
@@ -126,7 +141,18 @@ def delete_knowledge_base(index_id):
         # Check if there are documents in this knowledge base
         kb_documents = [d for d in documents if d.get('index_id') == index_id]
         if kb_documents:
-            return jsonify({'error': 'Cannot delete knowledge base with documents'}), 400
+            # Delete all documents from ChromaDB if they exist
+            if CHROMA_ENABLED and chroma_service:
+                for doc in kb_documents:
+                    doc_id = f"kb_{index_id}_doc_{doc['id']}"
+                    try:
+                        chroma_service.delete_document(doc_id)
+                        logger.info(f"Deleted document {doc_id} from ChromaDB")
+                    except Exception as e:
+                        logger.warning(f"Could not delete document {doc_id}: {e}")
+            
+            # Remove documents from memory
+            documents[:] = [d for d in documents if d.get('index_id') != index_id]
         
         # Find and remove the knowledge base
         kb_index = next((i for i, kb in enumerate(knowledge_bases_storage) if kb['id'] == index_id), None)
@@ -135,6 +161,14 @@ def delete_knowledge_base(index_id):
             return jsonify({'error': 'Knowledge base not found'}), 404
         
         deleted_kb = knowledge_bases_storage.pop(kb_index)
+        
+        # Delete ChromaDB collection for this knowledge base
+        if CHROMA_ENABLED and chroma_service:
+            success = chroma_service.delete_collection_for_kb(index_id)
+            if success:
+                logger.info(f"ChromaDB collection deleted for KB: {index_id}")
+            else:
+                logger.warning(f"Failed to delete ChromaDB collection for KB: {index_id}")
         
         return jsonify({
             'success': True,
@@ -330,16 +364,16 @@ def _process_with_chroma_kb(content, filename, doc_id, index_id, form_data, file
         embeddings = generate_embeddings(chunks)
         logger.info("4. ✅ Bedrock 임베딩 생성 완료")
         
-        # Store in Chroma DB
-        logger.info("5. 🔄 ChromaDB 저장 시작")
+        # Store in specific knowledge base collection
+        logger.info("5. 🔄 ChromaDB 저장 시작 - Collection: %s", index_id)
         document_id = f"kb_{index_id}_doc_{doc_id}"
-        success = chroma_service.add_document_chunks(
+        success = chroma_service.add_document_to_kb(
             chunks=chunks,
             embeddings=embeddings,
             document_id=document_id,
             document_name=filename,
+            index_id=index_id,
             metadata={
-                'index_id': index_id,
                 'chunk_strategy': chunk_strategy,
                 'chunk_size': chunk_size,
                 'original_filename': filename,

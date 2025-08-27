@@ -1568,6 +1568,38 @@ input:checked + .toggle-slider:before {
   transform: translateY(-1px);
 }
 
+/* Form Validation Styles */
+.form-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.error-border {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 1px #ef4444;
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+.error-icon {
+  color: #f87171;
+  font-size: 14px;
+}
+
 /* Notification Styles */
 .notification {
   position: fixed;
