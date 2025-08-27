@@ -40,13 +40,10 @@ class ChromaService:
             # Initialize Chroma client with persistence
             self.client = chromadb.PersistentClient(path=self.persist_directory)
             
-            # Get or create collection for documents
-            self.collection = self.client.get_or_create_collection(
-                name="documents",
-                metadata={"description": "Document embeddings for RAG system"}
-            )
+            # Don't automatically create default collection
+            self.collection = None
             
-            logger.info(f"Chroma DB initialized with {self.collection.count()} existing documents")
+            logger.info("Chroma DB client initialized")
             
         except Exception as e:
             logger.error(f"Failed to initialize Chroma DB: {str(e)}")
@@ -428,16 +425,16 @@ class ChromaService:
         """
         logger.warning("Resetting default collection only. Knowledge base collections remain intact.")
         try:
-            # Delete existing default collection
-            self.client.delete_collection("documents")
-            logger.info("Deleted existing default collection")
+            # Delete existing default collection if it exists
+            try:
+                self.client.delete_collection("documents")
+                logger.info("Deleted existing default collection")
+            except:
+                logger.info("No default collection to delete")
             
-            # Recreate default collection
-            self.collection = self.client.get_or_create_collection(
-                name="documents",
-                metadata={"description": "Document embeddings for RAG system"}
-            )
-            logger.info("Created new empty default collection")
+            # Don't recreate default collection
+            self.collection = None
+            logger.info("Default collection removed, no automatic recreation")
             
             return True
             
@@ -497,6 +494,7 @@ class ChromaService:
             logger.error(f"Failed to delete collection for {index_id}: {str(e)}")
             return False
     
+   
     def get_or_create_collection(self, index_id: str):
         """
         Get or create a collection for a knowledge base
@@ -582,6 +580,161 @@ class ChromaService:
             
         except Exception as e:
             logger.error(f"Failed to add document chunks to KB {index_id}: {str(e)}")
+            return False
+    
+    def list_all_collections(self) -> List[Dict[str, Any]]:
+        """
+        List all ChromaDB collections with their statistics
+        
+        Returns:
+            List of dictionaries containing collection info
+        """
+        try:
+            # Get all collections from ChromaDB client
+            collections_list = self.client.list_collections()
+            
+            collection_info = []
+            for coll in collections_list:
+                try:
+                    # Get collection details
+                    collection = self.client.get_collection(coll.name)
+                    count = collection.count()
+                    
+                    # Get sample metadata to determine if it's a knowledge base collection
+                    sample_docs = collection.peek(1)
+                    is_kb_collection = False
+                    kb_id = None
+                    
+                    if sample_docs and sample_docs.get('metadatas') and sample_docs['metadatas']:
+                        meta = sample_docs['metadatas'][0]
+                        if 'index_id' in meta:
+                            is_kb_collection = True
+                            kb_id = meta['index_id']
+                    
+                    # Format collection info
+                    info = {
+                        'name': coll.name,
+                        'id': coll.name,  # Use name as ID for consistency
+                        'document_count': count,
+                        'is_knowledge_base': is_kb_collection,
+                        'knowledge_base_id': kb_id,
+                        'metadata': coll.metadata or {},
+                        'created_at': coll.metadata.get('created_at', 'Unknown') if coll.metadata else 'Unknown'
+                    }
+                    
+                    collection_info.append(info)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to get info for collection {coll.name}: {e}")
+                    continue
+            
+            logger.info(f"Found {len(collection_info)} ChromaDB collections")
+            return collection_info
+            
+        except Exception as e:
+            logger.error(f"Failed to list collections: {str(e)}")
+            return []
+    
+    def get_collection_stats_by_kb(self, index_id: str) -> Dict[str, Any]:
+        """
+        Get detailed statistics for a specific knowledge base collection
+        
+        Args:
+            index_id: Knowledge base index ID
+            
+        Returns:
+            Dict containing collection statistics
+        """
+        try:
+            collection = self.get_or_create_collection(index_id)
+            if not collection:
+                return {'exists': False, 'document_count': 0}
+            
+            count = collection.count()
+            
+            if count > 0:
+                # Get sample of documents to analyze
+                sample_size = min(count, 10)
+                sample_docs = collection.peek(sample_size)
+                
+                # Analyze metadata
+                unique_docs = set()
+                total_chunks = 0
+                
+                if sample_docs.get('metadatas'):
+                    for meta in sample_docs['metadatas']:
+                        if 'document_id' in meta:
+                            unique_docs.add(meta['document_id'])
+                        total_chunks += 1
+                
+                return {
+                    'exists': True,
+                    'collection_name': index_id,
+                    'total_chunks': count,
+                    'estimated_documents': len(unique_docs) if sample_size < count else len(unique_docs),
+                    'sample_size': sample_size,
+                    'is_sample': sample_size < count
+                }
+            else:
+                return {
+                    'exists': True,
+                    'collection_name': index_id,
+                    'total_chunks': 0,
+                    'estimated_documents': 0
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get stats for collection {index_id}: {str(e)}")
+            return {'exists': False, 'document_count': 0}
+    
+    def delete_collection_by_name(self, collection_name: str) -> bool:
+        """
+        Delete a collection by its name
+        
+        Args:
+            collection_name: Collection name to delete
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Delete collection
+            self.client.delete_collection(collection_name)
+            
+            # Remove from collections dict if it exists
+            if collection_name in self.collections:
+                del self.collections[collection_name]
+            
+            # Clear default collection reference if it matches
+            if self.collection and hasattr(self.collection, 'name') and self.collection.name == collection_name:
+                self.collection = None
+            
+            logger.info(f"Deleted ChromaDB collection: {collection_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete collection {collection_name}: {str(e)}")
+            return False
+    
+    def reinitialize_client(self) -> bool:
+        """
+        Reinitialize ChromaDB client and clear memory cache
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Clear collections cache
+            self.collections.clear()
+            
+            # Reinitialize client
+            self._initialize_client()
+            
+            logger.info("ChromaDB client reinitialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reinitialize ChromaDB client: {str(e)}")
             return False
 
 
@@ -685,3 +838,24 @@ class DocumentChunker:
             chunks.append(" ".join(chunk_words))
         
         return chunks
+    
+    def reinitialize_client(self) -> bool:
+        """
+        Reinitialize ChromaDB client and clear memory cache
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Clear collections cache
+            self.collections.clear()
+            
+            # Reinitialize client
+            self._initialize_client()
+            
+            logger.info("ChromaDB client reinitialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reinitialize ChromaDB client: {str(e)}")
+            return False

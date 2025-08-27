@@ -58,6 +58,18 @@ export const bedrockService = {
   }
 };
 
+export const chromaService = {
+  async getCollections() {
+    const response = await api.get('/chroma/collections');
+    return response.data;
+  },
+
+  async getCollectionStats(collectionId) {
+    const response = await api.get(`/chroma/collections/${collectionId}/stats`);
+    return response.data;
+  }
+};
+
 export const documentService = {
   async getDocuments(indexId = null) {
     const params = indexId ? { index_id: indexId } : {};
