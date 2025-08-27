@@ -32,6 +32,15 @@ def init_knowledge_module(app_context):
     CHROMA_ENABLED = app_context['CHROMA_ENABLED']
     rag_engine = app_context['rag_engine']
     app_config = app_context['app_config']
+    
+    # Sync documents from ChromaDB on startup
+    if CHROMA_ENABLED and chroma_service:
+        from .documents import sync_documents_from_chroma
+        try:
+            sync_documents_from_chroma()
+            logger.info("Initial sync from ChromaDB completed")
+        except Exception as e:
+            logger.error(f"Failed to sync documents on startup: {e}")
 
 @knowledge_bp.route('/api/knowledge')
 def get_knowledge_bases():
@@ -194,7 +203,7 @@ def get_knowledge_base_documents(index_id):
                 'file_name': doc['title'],
                 'file_size': doc.get('file_size', 0),
                 'uploaded_at': doc.get('uploaded_at', datetime.now().isoformat()),
-                'status': doc.get('status', 'Success'),
+                'status': doc.get('status', 'Completed'),
                 'chunk_count': doc.get('chunk_count', 1),
                 'index_id': index_id
             })
@@ -272,23 +281,34 @@ def upload_to_knowledge_base():
             'uploaded_at': datetime.now().isoformat(),
             'category_id': None,
             'index_id': index_id,
-            'status': 'Success',
+            'status': 'Pending',
             'chunk_count': max(1, len(content) // 1000)  # Estimate chunks
         }
         
         documents.append(new_doc)
         
+        # Update status to Processing
+        new_doc['status'] = 'Processing'
+        
         # Process with ChromaDB or RAG
         chunks_added = 0
-        if CHROMA_ENABLED and chroma_service and content.strip():
-            chunks_added = _process_with_chroma_kb(
-                content, filename, new_doc['id'], index_id,
-                request.form, file_path
-            )
-        elif RAG_ENABLED and content.strip():
-            chunks_added = _process_with_rag_kb(
-                content, filename, new_doc, index_id, file_path
-            )
+        try:
+            if CHROMA_ENABLED and chroma_service and content.strip():
+                chunks_added = _process_with_chroma_kb(
+                    content, filename, new_doc['id'], index_id,
+                    request.form, file_path
+                )
+            elif RAG_ENABLED and content.strip():
+                chunks_added = _process_with_rag_kb(
+                    content, filename, new_doc, index_id, file_path
+                )
+            
+            # Update status to Completed on success
+            new_doc['status'] = 'Completed'
+        except Exception as e:
+            # Update status to Failed on error
+            new_doc['status'] = 'Failed'
+            logger.error(f"Document processing failed: {e}")
         
         logger.info(f"File uploaded: {filename} (ID: {new_doc['id']}, Index: {index_id})")
         

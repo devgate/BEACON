@@ -94,10 +94,88 @@ def extract_images_from_pdf(file_stream, document_id):
         logger.error(f"PDF image extraction error: {e}")
         return []
 
+def sync_documents_from_chroma():
+    """Sync global documents array with ChromaDB collections"""
+    global documents
+    try:
+        if not CHROMA_ENABLED or not chroma_service:
+            return
+        
+        # Get all documents from ChromaDB
+        chroma_docs = chroma_service.list_all_documents()
+        
+        # Convert ChromaDB format to documents array format
+        synced_documents = []
+        for doc_data in chroma_docs.values():
+            doc_id = doc_data.get('document_id')
+            if doc_id:
+                # Find existing document or create from ChromaDB data
+                existing_doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
+                
+                if existing_doc:
+                    # Update existing document with ChromaDB info
+                    existing_doc['chunk_count'] = doc_data.get('chunk_count', 1)
+                    # Ensure index_id is set for knowledge base collections
+                    if doc_data.get('collection') != 'documents':
+                        existing_doc['index_id'] = doc_data.get('collection')
+                    synced_documents.append(existing_doc)
+                else:
+                    # Create document entry from ChromaDB metadata  
+                    collection_id = doc_data.get('collection', 'documents')
+                    index_id = collection_id if collection_id != 'documents' else None
+                    
+                    synced_doc = {
+                        'id': int(doc_id) if str(doc_id).isdigit() else doc_id,
+                        'title': doc_data.get('document_name', 'Unknown'),
+                        'file_name': doc_data.get('document_name', 'Unknown'),
+                        'content': f"Document with {doc_data.get('chunk_count', 0)} chunks",
+                        'file_path': f"uploads/{doc_data.get('document_name', 'unknown.pdf')}",
+                        'uploaded_at': doc_data.get('created_at', datetime.now().isoformat()),
+                        'category_id': None,
+                        'index_id': index_id,
+                        'status': 'Success',
+                        'chunk_count': doc_data.get('chunk_count', 1),
+                        'file_size': doc_data.get('total_size', 0)
+                    }
+                    synced_documents.append(synced_doc)
+        
+        # Update global documents array
+        documents[:] = synced_documents
+        logger.info(f"Synced {len(synced_documents)} documents from ChromaDB")
+        
+    except Exception as e:
+        logger.error(f"Failed to sync documents from ChromaDB: {e}")
+
+@documents_bp.route('/api/documents/sync', methods=['POST'])
+def sync_documents():
+    """Manual sync with ChromaDB collections"""
+    try:
+        if not CHROMA_ENABLED or not chroma_service:
+            return jsonify({'error': 'ChromaDB not enabled'}), 400
+        
+        sync_documents_from_chroma()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Synced {len(documents)} documents from ChromaDB',
+            'document_count': len(documents)
+        })
+    except Exception as e:
+        logger.error(f"Manual sync failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @documents_bp.route('/api/documents')
 def get_documents():
-    """Get all documents"""
-    return jsonify(documents)
+    """Get all documents with ChromaDB sync"""
+    try:
+        # Sync with ChromaDB if enabled
+        if CHROMA_ENABLED and chroma_service:
+            sync_documents_from_chroma()
+        
+        return jsonify(documents)
+    except Exception as e:
+        logger.error(f"Failed to get documents: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @documents_bp.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -163,6 +241,7 @@ def upload_file():
             new_doc = {
                 'id': document_counter,
                 'title': filename,
+                'file_name': filename,
                 'content': text_content,
                 'type': 'uploaded',
                 'images': images,
@@ -172,7 +251,8 @@ def upload_file():
                 'index_id': index_id,  # Add knowledge base ID
                 'extraction_metadata': extraction_metadata,
                 'uploaded_at': datetime.now().isoformat(),
-                'file_size': os.path.getsize(file_path)
+                'file_size': os.path.getsize(file_path),
+                'status': 'Processing'  # Initial processing status
             }
             documents.append(new_doc)
             
@@ -206,6 +286,10 @@ def upload_file():
                     logger.info(f"Legacy RAG processing completed")
                 except Exception as e:
                     logger.error(f"Failed to process document with legacy RAG: {e}")
+            
+            # Update document status to completed
+            new_doc['status'] = 'Success'
+            new_doc['processed_at'] = datetime.now().isoformat()
             
             # Prepare response
             processing_time = time.time() - processing_start_time
@@ -244,6 +328,10 @@ def upload_file():
             
         except Exception as e:
             logger.error(f"Upload processing failed: {e}")
+            # Update status to failed if document was created
+            if 'new_doc' in locals() and new_doc in documents:
+                new_doc['status'] = 'Failed'
+                new_doc['error'] = str(e)
             return jsonify({'error': f'파일 처리 중 오류가 발생했습니다: {str(e)}'}), 500
     
     return jsonify({'error': f'지원되지 않는 파일 형식입니다. 지원 형식: {", ".join(ALLOWED_EXTENSIONS)}'}), 400

@@ -293,61 +293,73 @@ class ChromaService:
             logger.error(f"Failed to get document info for {document_id}: {str(e)}")
             return {"exists": False, "chunk_count": 0}
     
-    def list_all_documents(self) -> List[Dict[str, Any]]:
+    def list_all_documents(self) -> Dict[str, Dict[str, Any]]:
         """
         List all documents across all collections
         
         Returns:
-            List of document information
+            Dict of document information keyed by document_id
         """
         try:
             all_docs = {}
             
-            # Get documents from default collection
-            results = self.collection.get(include=["metadatas"])
-            if results["ids"]:
-                for metadata in results["metadatas"]:
-                    doc_id = metadata.get("document_id")
-                    if doc_id not in all_docs:
-                        all_docs[doc_id] = {
-                            "document_id": doc_id,
-                            "document_name": metadata.get("document_name", "Unknown"),
-                            "created_at": metadata.get("created_at", "Unknown"),
-                            "chunk_count": 0,
-                            "total_size": 0,
-                            "collection": "documents"
-                        }
-                    
-                    all_docs[doc_id]["chunk_count"] += 1
-                    all_docs[doc_id]["total_size"] += metadata.get("chunk_size", 0)
-            
-            # Get documents from knowledge base collections
-            for kb_id, collection in self.collections.items():
+            # Get documents from default collection (if exists)
+            if self.collection:
                 try:
-                    kb_results = collection.get(include=["metadatas"])
-                    if kb_results["ids"]:
-                        for metadata in kb_results["metadatas"]:
+                    results = self.collection.get(include=["metadatas"])
+                    if results["ids"]:
+                        for metadata in results["metadatas"]:
                             doc_id = metadata.get("document_id")
-                            if doc_id not in all_docs:
+                            if doc_id and doc_id not in all_docs:
                                 all_docs[doc_id] = {
                                     "document_id": doc_id,
                                     "document_name": metadata.get("document_name", "Unknown"),
                                     "created_at": metadata.get("created_at", "Unknown"),
                                     "chunk_count": 0,
                                     "total_size": 0,
-                                    "collection": kb_id
+                                    "collection": "documents"
                                 }
                             
-                            all_docs[doc_id]["chunk_count"] += 1
-                            all_docs[doc_id]["total_size"] += metadata.get("chunk_size", 0)
+                            if doc_id:
+                                all_docs[doc_id]["chunk_count"] += 1
+                                all_docs[doc_id]["total_size"] += metadata.get("chunk_size", 0)
                 except Exception as e:
-                    logger.warning(f"Could not access collection {kb_id}: {e}")
+                    logger.warning(f"Could not access default collection: {e}")
             
-            return list(all_docs.values())
+            # Get documents from knowledge base collections (refresh collections first)
+            all_collections = self.list_all_collections()
+            for collection_info in all_collections:
+                collection_name = collection_info['name']
+                try:
+                    # Get or create collection reference
+                    collection = self.client.get_collection(collection_name)
+                    
+                    kb_results = collection.get(include=["metadatas"])
+                    if kb_results["ids"]:
+                        for metadata in kb_results["metadatas"]:
+                            doc_id = metadata.get("document_id")
+                            if doc_id and doc_id not in all_docs:
+                                all_docs[doc_id] = {
+                                    "document_id": doc_id,
+                                    "document_name": metadata.get("document_name", "Unknown"),
+                                    "created_at": metadata.get("created_at", "Unknown"),
+                                    "chunk_count": 0,
+                                    "total_size": 0,
+                                    "collection": collection_name
+                                }
+                            
+                            if doc_id:
+                                all_docs[doc_id]["chunk_count"] += 1
+                                all_docs[doc_id]["total_size"] += metadata.get("chunk_size", 0)
+                except Exception as e:
+                    logger.warning(f"Could not access collection {collection_name}: {e}")
+            
+            logger.info(f"Found {len(all_docs)} documents across all collections")
+            return all_docs
             
         except Exception as e:
             logger.error(f"Failed to list documents: {str(e)}")
-            return []
+            return {}
     
     def get_collection_stats(self) -> Dict[str, Any]:
         """

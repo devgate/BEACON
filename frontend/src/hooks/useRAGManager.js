@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react';
-import { documentService } from '../services/api';
+import { documentService, chromaService } from '../services/api';
 
 export const useRAGManager = () => {
   // State management
@@ -139,20 +139,64 @@ export const useRAGManager = () => {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const kbResponse = await documentService.getKnowledgeBases();
+      // Load knowledge bases from both stored configs and actual ChromaDB collections
+      const [kbResponse, chromaResponse] = await Promise.all([
+        documentService.getKnowledgeBases(),
+        chromaService.getCollections().catch(error => {
+          console.warn('ChromaDB collections unavailable:', error);
+          return { success: false, collections: [] };
+        })
+      ]);
+      
       const knowledgeBases = kbResponse.knowledge_bases || [];
+      const chromaCollections = chromaResponse.success ? (chromaResponse.collections || []) : [];
+      
+      // Merge stored knowledge bases with actual ChromaDB collection data
+      const mergedIndexes = [];
+      
+      // Add all stored knowledge bases
+      for (const kb of knowledgeBases) {
+        const chromaCollection = chromaCollections.find(c => c.name === kb.id || c.id === kb.id);
+        
+        mergedIndexes.push({
+          id: kb.id,
+          name: kb.name,
+          status: kb.status || 'active',
+          description: kb.description,
+          document_count: kb.document_count || 0,
+          // Add ChromaDB collection info if available
+          chroma_exists: !!chromaCollection,
+          chroma_chunks: chromaCollection?.document_count || 0,
+          chroma_metadata: chromaCollection?.metadata || {},
+          is_synced: !!(chromaCollection && chromaCollection.document_count > 0)
+        });
+      }
+      
+      // Add ChromaDB-only collections (not in stored knowledge bases)
+      for (const chromaCollection of chromaCollections) {
+        const existsInKB = knowledgeBases.find(kb => kb.id === chromaCollection.name);
+        
+        if (!existsInKB && chromaCollection.is_knowledge_base) {
+          mergedIndexes.push({
+            id: chromaCollection.name,
+            name: chromaCollection.name,
+            status: 'chroma-only',
+            description: `ChromaDB Collection (${chromaCollection.document_count} chunks)`,
+            document_count: 0,
+            chroma_exists: true,
+            chroma_chunks: chromaCollection.document_count,
+            chroma_metadata: chromaCollection.metadata || {},
+            is_synced: false,
+            source: 'chromadb'
+          });
+        }
+      }
+      
       setKnowledgeBases(knowledgeBases);
+      setIndexList(mergedIndexes);
       
-      const indexes = knowledgeBases.map(kb => ({
-        id: kb.id,
-        name: kb.name,
-        status: kb.status || 'active',
-        description: kb.description
-      }));
-      setIndexList(indexes);
-      
-      if (indexes.length > 0 && !selectedIndexId) {
-        const defaultIndex = indexes.find(idx => idx.id === 'skshieldus_poc_callcenter') || indexes[0];
+      if (mergedIndexes.length > 0 && !selectedIndexId) {
+        const defaultIndex = mergedIndexes.find(idx => idx.id === 'skshieldus_poc_callcenter') || mergedIndexes[0];
         setSelectedIndexId(defaultIndex.id);
         setSelectedIndex(defaultIndex.name);
       }
@@ -165,23 +209,28 @@ export const useRAGManager = () => {
     }
   };
 
+  const syncDocumentsFromChroma = async () => {
+    try {
+      await documentService.syncDocuments();
+      console.log('✅ ChromaDB sync completed');
+    } catch (error) {
+      console.error('Failed to sync with ChromaDB:', error);
+    }
+  };
+
   const loadAllDocuments = async () => {
     try {
-      const allDocs = [];
+      // First sync with ChromaDB to ensure consistency
+      await syncDocumentsFromChroma();
       
-      const kbResponse = await documentService.getKnowledgeBases();
-      const knowledgeBases = kbResponse.knowledge_bases || [];
+      // Load all documents from the general endpoint (now synced with ChromaDB)
+      const response = await documentService.getDocuments();
+      const allDocs = Array.isArray(response) ? response : (response.documents || response || []);
       
-      for (const kb of knowledgeBases) {
-        try {
-          const response = await documentService.getDocumentsByIndex(kb.id);
-          const docs = response.documents || [];
-          allDocs.push(...docs);
-        } catch (error) {
-          console.error(`Failed to load documents for index ${kb.id}:`, error);
-        }
-      }
+      console.log(`📊 Loaded ${allDocs.length} documents from synced endpoint`);
       
+      // Calculate document statistics
+      updateDocumentStats(allDocs);
       setDocuments(allDocs);
       
       if (selectedIndexId) {
@@ -439,6 +488,7 @@ export const useRAGManager = () => {
     loadInitialData,
     loadAllDocuments,
     loadDocumentsByIndex,
+    syncDocumentsFromChroma,
     updateDocumentStats,
     validateFile,
     handleFileUpload

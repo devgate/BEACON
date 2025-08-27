@@ -155,6 +155,11 @@ export const documentService = {
     return response.data;
   },
 
+  async syncDocuments() {
+    const response = await api.post('/documents/sync');
+    return response.data;
+  },
+
   async reprocessDocument(docId, options = {}) {
     const response = await api.post(`/documents/${docId}/reprocess`, options);
     return response.data;

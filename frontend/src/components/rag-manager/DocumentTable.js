@@ -1,6 +1,7 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrash, faSync, faDownload } from '@fortawesome/free-solid-svg-icons';
+import './EnhancedFileManager.css';
 
 const DocumentTable = ({ 
   filteredData, 
@@ -26,11 +27,12 @@ const DocumentTable = ({
               />
             </th>
             <th>No</th>
-            <th>File Name</th>
-            <th>File Size</th>
-            <th>Modified</th>
-            <th>Chunks</th>
-            <th>Actions</th>
+            <th>상태</th>
+            <th>파일 이름</th>
+            <th>파일 크기</th>
+            <th>마지막 수정</th>
+            <th>청크</th>
+            <th>작업</th>
           </tr>
         </thead>
         <tbody>
@@ -44,6 +46,19 @@ const DocumentTable = ({
                 />
               </td>
               <td>{filteredData.length - idx}</td>
+              <td>
+                <span className={`document-status ${
+                  doc.status === 'Processing' ? 'status-processing' :
+                  doc.status === 'Success' || doc.status === 'Completed' || !doc.status ? 'status-completed' :
+                  doc.status === 'Failed' || doc.status === 'Error' ? 'status-failed' :
+                  'status-pending'
+                }`}>
+                  {doc.status === 'Processing' ? 'Processing' :
+                   doc.status === 'Success' || doc.status === 'Completed' ? 'Completed' :
+                   doc.status === 'Failed' || doc.status === 'Error' ? 'Failed' :
+                   doc.status || 'Completed'}
+                </span>
+              </td>
               <td className="file-name" title={doc.name}>{doc.name}</td>
               <td>{typeof doc.size === 'number' ? formatFileSize(doc.size) : doc.size}</td>
               <td>{formatDate(doc.date)}</td>
