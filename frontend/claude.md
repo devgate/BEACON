@@ -1559,6 +1559,42 @@ GENERATE_SOURCEMAP=false
 
 ---
 
+## ⚠️ Development Server Rules
+
+**IMPORTANT - Service Collision Prevention**
+
+Before running any development commands, **ALWAYS check if services are already running**:
+
+```bash
+# Check if frontend is running on port 3000
+curl -s http://localhost:3000 || echo "Frontend not running"
+
+# Check if any Node processes are using port 3000
+lsof -i :3000
+
+# Check running Docker containers
+docker ps
+```
+
+**DO NOT START DUPLICATE SERVICES**:
+- ❌ Do not run `npm start` if frontend is already running on localhost:3000
+- ❌ Do not run `npm install` if services are already running with dependencies installed
+- ❌ Do not create new node_modules if containers are active
+- ✅ Use existing running services for development and testing
+- ✅ Check Docker containers first: `docker ps` and `docker-compose ps`
+
+**If services are running via Docker**:
+- Use `docker-compose exec frontend bash` to access frontend container
+- Use `docker-compose logs frontend` to monitor frontend logs
+- Use `docker-compose restart frontend` to restart services if needed
+
+**If you see EADDRINUSE or port already in use errors**:
+- This indicates services are already running on localhost:3000
+- Use the existing running services instead of starting new ones
+- Check both local processes and Docker containers
+
+---
+
 ## 🧪 Testing
 
 ### Component Testing

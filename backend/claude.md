@@ -606,6 +606,42 @@ class ProductionConfig:
 
 ---
 
+## ⚠️ Development Server Rules
+
+**IMPORTANT - Service Collision Prevention**
+
+Before running any development commands, **ALWAYS check if services are already running**:
+
+```bash
+# Check if backend is running on port 5000
+curl -s http://localhost:5000/api/health || echo "Backend not running"
+
+# Check if any Python processes are using port 5000
+lsof -i :5000
+
+# Check running Docker containers
+docker ps
+```
+
+**DO NOT START DUPLICATE SERVICES**:
+- ❌ Do not run `python app.py` if backend is already running on localhost:5000
+- ❌ Do not run `pip install` if services are already running with dependencies installed
+- ❌ Do not create new virtual environments if containers are active
+- ✅ Use existing running services for development and testing
+- ✅ Check Docker containers first: `docker ps` and `docker-compose ps`
+
+**If services are running via Docker**:
+- Use `docker-compose exec backend bash` to access backend container
+- Use `docker-compose logs backend` to monitor backend logs
+- Use `docker-compose restart backend` to restart services if needed
+
+**If you see connection refused or port already in use errors**:
+- This indicates services are already running
+- Use the existing running services instead of starting new ones
+- Check both local processes and Docker containers
+
+---
+
 ## 🔍 Testing
 
 ### Unit Tests
