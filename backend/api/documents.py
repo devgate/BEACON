@@ -707,8 +707,11 @@ def get_document_preview(doc_id):
             return jsonify({'error': 'Document not found'}), 404
         
         file_path = doc.get('file_path')
-        if not file_path or not os.path.exists(file_path):
-            return jsonify({'error': 'Document file not found'}), 404
+        file_exists = file_path and os.path.exists(file_path)
+        
+        # If no physical file, try to get content from ChromaDB only
+        if not file_exists:
+            logger.info(f"Physical file not found for doc {doc_id}, trying ChromaDB only")
         
         preview_data = {
             'text_content': '',
@@ -734,12 +737,16 @@ def get_document_preview(doc_id):
             except Exception as e:
                 logger.warning(f"Failed to get chunks from ChromaDB for doc {doc.get('id')}: {e}")
         
-        # Fall back to extracting text from PDF file if no chunks found
-        if not text_content and file_path.lower().endswith('.pdf'):
+        # Fall back to extracting text from PDF file if no chunks found AND file exists
+        if not text_content and file_exists and file_path.lower().endswith('.pdf'):
             with open(file_path, 'rb') as file:
                 # Extract text
                 text_content = extract_text_from_pdf(file)
                 logger.info(f"Extracted text from PDF file for doc {doc.get('id')}: {len(text_content)} characters")
+        
+        # If still no content and no file exists, return an error
+        if not text_content and not file_exists:
+            return jsonify({'error': 'Document content not available - no file and no chunks found'}), 404
         
         # Set text content and metadata
         if text_content:
@@ -749,8 +756,8 @@ def get_document_preview(doc_id):
             preview_data['metadata']['line_count'] = len(text_content.split('\n'))
             preview_data['metadata']['sentence_count'] = len([s for s in text_content.split('.') if s.strip()])
         
-        # Extract images from PDF
-        if file_path.lower().endswith('.pdf'):
+        # Extract images from PDF (only if file exists)
+        if file_exists and file_path.lower().endswith('.pdf'):
             with open(file_path, 'rb') as file:
                 images = extract_images_from_pdf(file, doc.get('id'))
                 preview_data['images'] = images

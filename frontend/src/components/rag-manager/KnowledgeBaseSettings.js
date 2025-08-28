@@ -347,21 +347,35 @@ const KnowledgeBaseSettings = ({
           throw new Error('Document not found');
         }
         
-        // Use the actual document content with multiple fallback options
+        // Try to get actual document content from multiple sources
         documentText = selectedDoc.content || 
                       selectedDoc.text || 
                       selectedDoc.extracted_text ||
-                      selectedDoc.raw_content ||
-                      `샘플 문서 내용입니다. 이것은 ${selectedDoc.file_name || selectedDoc.title || '문서'}의 미리보기를 위한 예시 텍스트입니다. 실제 청킹 전략을 테스트하기 위해 여러 문장으로 구성되어 있습니다. 첫 번째 문단에는 기본적인 정보가 포함되어 있고, 두 번째 문단에는 더 상세한 내용이 들어있습니다.
-
-이 문서는 다양한 청킹 전략의 효과를 비교하기 위한 목적으로 작성되었습니다. 문장 기반 청킹은 자연스러운 경계를 유지하며, 단락 기반 청킹은 논리적 구조를 보존합니다. 의미 기반 청킹은 내용의 맥락을 고려하여 분할하고, 슬라이딩 윈도우는 정보 손실을 최소화합니다.
-
-추가로, 이 예시 텍스트는 한국어 처리에 최적화된 청킹 전략을 테스트하기 위해 다양한 문장 구조와 단락을 포함합니다. 긴 복합 문장과 짧은 단순 문장이 혼재되어 있어, 각 전략의 특성을 잘 보여줄 수 있습니다.`;
+                      selectedDoc.raw_content;
+        
+        // If no cached content, fetch from preview API
+        if (!documentText || documentText.trim().length === 0) {
+          console.log('No cached content found, fetching from preview API...');
+          try {
+            const previewResponse = await fetch(`/api/documents/${selectedDoc.id}/preview`);
+            if (previewResponse.ok) {
+              const previewData = await previewResponse.json();
+              documentText = previewData.text_content || '';
+              console.log('Fetched document content from preview API:', documentText.length, 'characters');
+            } else {
+              console.error('Preview API failed:', previewResponse.status, previewResponse.statusText);
+              throw new Error(`Preview API returned ${previewResponse.status}`);
+            }
+          } catch (apiError) {
+            console.error('Failed to fetch document preview:', apiError);
+            throw new Error(`문서 내용을 불러올 수 없습니다: ${apiError.message}`);
+          }
+        }
       }
       
       // Ensure we have valid text content
       if (!documentText || documentText.trim().length === 0) {
-        throw new Error('Document has no readable text content');
+        throw new Error('이 문서에서 텍스트 내용을 찾을 수 없습니다. 파일이 손상되었거나 텍스트를 포함하지 않을 수 있습니다.');
       }
       
       setDocumentText(documentText);

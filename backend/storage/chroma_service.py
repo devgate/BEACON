@@ -326,9 +326,9 @@ class ChromaService:
                 parts = document_id.split("_doc_")
                 kb_id = parts[0].replace("kb_", "")
                 
-                # Get the specific collection
-                collection = self.collections.get(kb_id)
-                if collection:
+                # Get the specific collection directly from client
+                try:
+                    collection = self.client.get_collection(name=kb_id)
                     results = collection.get(
                         where={"document_id": document_id},
                         include=["documents", "metadatas"]
@@ -342,22 +342,29 @@ class ChromaService:
                         ))
                         chunk_data.sort(key=lambda x: x[1].get("chunk_index", 0))
                         chunks = [chunk[0] for chunk in chunk_data]
+                        logger.info(f"Found {len(chunks)} chunks for document {document_id} in collection {kb_id}")
                         return chunks
+                except Exception as e:
+                    logger.warning(f"Failed to get collection {kb_id}: {e}")
             
-            # Fall back to default collection
-            results = self.collection.get(
-                where={"document_id": document_id},
-                include=["documents", "metadatas"]
-            )
-            
-            if results["ids"]:
-                # Sort by chunk_index if available
-                chunk_data = list(zip(
-                    results["documents"], 
-                    results["metadatas"]
-                ))
-                chunk_data.sort(key=lambda x: x[1].get("chunk_index", 0))
-                chunks = [chunk[0] for chunk in chunk_data]
+            # Fall back to default collection if it exists
+            if self.collection:
+                results = self.collection.get(
+                    where={"document_id": document_id},
+                    include=["documents", "metadatas"]
+                )
+                
+                if results["ids"]:
+                    # Sort by chunk_index if available
+                    chunk_data = list(zip(
+                        results["documents"], 
+                        results["metadatas"]
+                    ))
+                    chunk_data.sort(key=lambda x: x[1].get("chunk_index", 0))
+                    chunks = [chunk[0] for chunk in chunk_data]
+                    logger.info(f"Found {len(chunks)} chunks for document {document_id} in default collection")
+            else:
+                logger.warning(f"No default collection available for document {document_id}")
             
             return chunks
             

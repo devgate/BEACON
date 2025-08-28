@@ -190,14 +190,16 @@ const ChunkingStrategy = ({
         
         console.log('✅ Filtered processedDocs (final count: ' + processedDocs.length + '):', processedDocs); // Debug log
         
-        // Force add a test document if API returns documents but filtering removes them
+        // Force add a document if API returns documents but filtering removes them (for debugging)
         if (documentsArray.length > 0 && processedDocs.length === 0) {
-          console.log('⚠️ Documents exist but all filtered out, adding first document anyway...');
+          console.log('⚠️ Documents exist but all filtered out, adding first document anyway for testing...');
           const testDoc = { ...documentsArray[0] };
           // Ensure it has a valid title
-          if (!testDoc.title && !testDoc.file_name) {
-            testDoc.title = testDoc.name || 'Test Document.txt';
+          if (!testDoc.title && !testDoc.file_name && !testDoc.filename) {
+            testDoc.title = testDoc.name || documentsArray[0].title || `Document_${testDoc.id}`;
           }
+          // Ensure we mark it as available for testing
+          testDoc.status = testDoc.status || 'Ready';
           processedDocs.push(testDoc);
         }
         
@@ -206,29 +208,11 @@ const ChunkingStrategy = ({
         
       } else {
         console.error('❌ API response not OK:', response.status, response.statusText);
-        
-        // Add fallback test document for development
-        const fallbackDoc = {
-          id: 'test-1',
-          title: 'Test Document.txt',
-          status: 'Success',
-          file_size: 1000
-        };
-        console.log('🔧 Adding fallback test document:', fallbackDoc);
-        setAvailableDocuments([fallbackDoc]);
+        setAvailableDocuments([]);
       }
     } catch (error) {
       console.error('💥 Failed to load documents:', error);
-      
-      // Add fallback test document on error
-      const fallbackDoc = {
-        id: 'test-error',
-        title: 'Error Test Document.txt',
-        status: 'Success',
-        file_size: 500
-      };
-      console.log('🔧 Adding error fallback document:', fallbackDoc);
-      setAvailableDocuments([fallbackDoc]);
+      setAvailableDocuments([]);
     }
   };
 
@@ -245,6 +229,11 @@ const ChunkingStrategy = ({
         console.log('Document preview data:', data); // Debug log
         
         const textContent = data.text_content || data.textContent || '';
+        
+        if (!textContent || textContent.trim().length === 0) {
+          throw new Error('문서에서 텍스트 내용을 찾을 수 없습니다. 파일이 손상되었거나 텍스트를 포함하지 않을 수 있습니다.');
+        }
+        
         setDocumentText(textContent);
         
         // Find the document in available documents with flexible ID matching
@@ -256,10 +245,6 @@ const ChunkingStrategy = ({
         console.log('Found document:', foundDoc); // Debug log
         setSelectedDocument(foundDoc || { id: documentId });
         setPreviewMode('document');
-        
-        if (!textContent) {
-          alert('문서에서 텍스트 내용을 찾을 수 없습니다.');
-        }
       } else {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
