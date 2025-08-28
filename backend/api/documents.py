@@ -128,11 +128,12 @@ def sync_documents_from_chroma():
                         'id': int(doc_id) if str(doc_id).isdigit() else doc_id,
                         'title': doc_data.get('document_name', 'Unknown'),
                         'file_name': doc_data.get('document_name', 'Unknown'),
-                        'content': f"Document with {doc_data.get('chunk_count', 0)} chunks",
+                        'content': '',  # Will be loaded from file when needed
                         'file_path': f"uploads/{doc_data.get('document_name', 'unknown.pdf')}",
                         'uploaded_at': doc_data.get('created_at', datetime.now().isoformat()),
                         'category_id': None,
                         'index_id': index_id,
+                        'knowledge_base_id': index_id,  # Add for consistency
                         'status': 'Success',
                         'chunk_count': doc_data.get('chunk_count', 1),
                         'file_size': doc_data.get('total_size', 0)
@@ -172,7 +173,7 @@ def get_documents():
         if CHROMA_ENABLED and chroma_service:
             sync_documents_from_chroma()
         
-        return jsonify(documents)
+        return jsonify({'documents': documents})
     except Exception as e:
         logger.error(f"Failed to get documents: {e}")
         return jsonify({'error': str(e)}), 500
@@ -249,6 +250,7 @@ def upload_file():
                 'original_filename': file.filename,
                 'category_id': category_id,
                 'index_id': index_id,  # Add knowledge base ID
+                'knowledge_base_id': index_id,  # Also add as knowledge_base_id for consistency
                 'extraction_metadata': extraction_metadata,
                 'uploaded_at': datetime.now().isoformat(),
                 'file_size': os.path.getsize(file_path),
@@ -426,6 +428,7 @@ def _process_with_chroma(text_content, filename, doc_id, chunk_strategy,
     except Exception as e:
         logger.error(f"Failed to process document with Chroma DB: {e}")
         return {'success': False, 'error': str(e)}
+
 
 @documents_bp.route('/api/documents/<doc_id>', methods=['DELETE'])
 def delete_document(doc_id):
@@ -683,14 +686,20 @@ def reprocess_document(doc_id):
         logger.error(f"Document reprocessing error: {e}")
         return jsonify({'error': f'Failed to reprocess document: {str(e)}'}), 500
 
-@documents_bp.route('/api/documents/<int:doc_id>/preview')
+@documents_bp.route('/api/documents/<doc_id>/preview')
 def get_document_preview(doc_id):
     """Get document preview with text, images, and metadata"""
     try:
-        # Find document
+        # Convert doc_id to int if it's a string
+        try:
+            doc_id_int = int(doc_id)
+        except (ValueError, TypeError):
+            doc_id_int = doc_id
+        
+        # Find document - handle both string and int IDs
         doc = None
         for d in documents:
-            if d.get('id') == doc_id:
+            if str(d.get('id')) == str(doc_id):
                 doc = d
                 break
         
@@ -705,7 +714,7 @@ def get_document_preview(doc_id):
             'text_content': '',
             'images': [],
             'metadata': {
-                'document_id': doc_id,
+                'document_id': doc.get('id'),
                 'file_name': doc.get('title', 'Unknown'),
                 'file_size': os.path.getsize(file_path) if os.path.exists(file_path) else 0,
                 'created_at': doc.get('created_at', datetime.now().isoformat()),
@@ -714,32 +723,48 @@ def get_document_preview(doc_id):
             }
         }
         
-        # Extract text and images from PDF
-        if file_path.lower().endswith('.pdf'):
+        # Try to get text content from ChromaDB first (chunked content)
+        text_content = ""
+        if CHROMA_ENABLED and chroma_service:
+            try:
+                chunks = chroma_service.get_document_chunks(str(doc.get('id')))
+                if chunks:
+                    text_content = '\n\n'.join(chunks)
+                    logger.info(f"Retrieved {len(chunks)} chunks from ChromaDB for doc {doc.get('id')}")
+            except Exception as e:
+                logger.warning(f"Failed to get chunks from ChromaDB for doc {doc.get('id')}: {e}")
+        
+        # Fall back to extracting text from PDF file if no chunks found
+        if not text_content and file_path.lower().endswith('.pdf'):
             with open(file_path, 'rb') as file:
                 # Extract text
                 text_content = extract_text_from_pdf(file)
-                if text_content:
-                    preview_data['text_content'] = text_content
-                    # Update metadata with text statistics
-                    preview_data['metadata']['word_count'] = len(text_content.split())
-                    preview_data['metadata']['line_count'] = len(text_content.split('\n'))
-                    preview_data['metadata']['sentence_count'] = len([s for s in text_content.split('.') if s.strip()])
-                
-                # Extract images
-                images = extract_images_from_pdf(file, doc_id)
+                logger.info(f"Extracted text from PDF file for doc {doc.get('id')}: {len(text_content)} characters")
+        
+        # Set text content and metadata
+        if text_content:
+            preview_data['text_content'] = text_content
+            # Update metadata with text statistics
+            preview_data['metadata']['word_count'] = len(text_content.split())
+            preview_data['metadata']['line_count'] = len(text_content.split('\n'))
+            preview_data['metadata']['sentence_count'] = len([s for s in text_content.split('.') if s.strip()])
+        
+        # Extract images from PDF
+        if file_path.lower().endswith('.pdf'):
+            with open(file_path, 'rb') as file:
+                images = extract_images_from_pdf(file, doc.get('id'))
                 preview_data['images'] = images
                 preview_data['metadata']['total_pages'] = len(images)
         
         # Add chunking information if available
         if CHROMA_ENABLED and chroma_service:
             try:
-                doc_info = chroma_service.get_document_info(str(doc_id))
+                doc_info = chroma_service.get_document_info(str(doc.get('id')))
                 if doc_info.get('exists'):
                     preview_data['metadata']['total_chunks'] = doc_info.get('chunk_count', 0)
                     preview_data['metadata']['total_tokens'] = doc_info.get('total_size', 0)
             except Exception as e:
-                logger.warning(f"Failed to get chunk info for doc {doc_id}: {e}")
+                logger.warning(f"Failed to get chunk info for doc {doc.get('id')}: {e}")
         
         return jsonify({
             'success': True,

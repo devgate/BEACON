@@ -307,6 +307,64 @@ class ChromaService:
             logger.error(f"Failed to get document info for {document_id}: {str(e)}")
             return {"exists": False, "chunk_count": 0}
     
+    def get_document_chunks(self, document_id: str) -> List[str]:
+        """
+        Get all text chunks for a specific document
+        
+        Args:
+            document_id: Document ID to query
+            
+        Returns:
+            List of text chunks for the document
+        """
+        try:
+            chunks = []
+            
+            # Check if document_id contains knowledge base prefix
+            if document_id.startswith("kb_") and "_doc_" in document_id:
+                # Extract knowledge base ID
+                parts = document_id.split("_doc_")
+                kb_id = parts[0].replace("kb_", "")
+                
+                # Get the specific collection
+                collection = self.collections.get(kb_id)
+                if collection:
+                    results = collection.get(
+                        where={"document_id": document_id},
+                        include=["documents", "metadatas"]
+                    )
+                    
+                    if results["ids"]:
+                        # Sort by chunk_index if available
+                        chunk_data = list(zip(
+                            results["documents"], 
+                            results["metadatas"]
+                        ))
+                        chunk_data.sort(key=lambda x: x[1].get("chunk_index", 0))
+                        chunks = [chunk[0] for chunk in chunk_data]
+                        return chunks
+            
+            # Fall back to default collection
+            results = self.collection.get(
+                where={"document_id": document_id},
+                include=["documents", "metadatas"]
+            )
+            
+            if results["ids"]:
+                # Sort by chunk_index if available
+                chunk_data = list(zip(
+                    results["documents"], 
+                    results["metadatas"]
+                ))
+                chunk_data.sort(key=lambda x: x[1].get("chunk_index", 0))
+                chunks = [chunk[0] for chunk in chunk_data]
+            
+            return chunks
+            
+        except Exception as e:
+            logger.error(f"Failed to get document chunks for {document_id}: {str(e)}")
+            return []
+    
     def list_all_documents(self) -> Dict[str, Dict[str, Any]]:
         """
         List all documents across all collections

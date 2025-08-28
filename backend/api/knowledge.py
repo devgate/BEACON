@@ -143,6 +143,27 @@ def update_knowledge_base(index_id):
         logger.error(f"Failed to update knowledge base: {e}")
         return jsonify({'error': str(e)}), 500
 
+@knowledge_bp.route('/api/knowledge-bases/<index_id>/documents')
+def get_knowledge_base_documents(index_id):
+    """Get documents belonging to a specific knowledge base"""
+    try:
+        # Filter documents by knowledge base ID
+        kb_documents = [
+            doc for doc in documents 
+            if str(doc.get('knowledge_base_id')) == str(index_id) or 
+               str(doc.get('category_id')) == str(index_id)
+        ]
+        
+        return jsonify({
+            'success': True,
+            'documents': kb_documents,
+            'count': len(kb_documents)
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get knowledge base documents: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @knowledge_bp.route('/api/knowledge/<index_id>', methods=['DELETE'])
 def delete_knowledge_base(index_id):
     """Delete a knowledge base"""
@@ -189,7 +210,7 @@ def delete_knowledge_base(index_id):
         return jsonify({'error': str(e)}), 500
 
 @knowledge_bp.route('/api/knowledge/<index_id>/documents')
-def get_knowledge_base_documents(index_id):
+def get_kb_documents(index_id):
     """Get documents for a specific knowledge base"""
     try:
         # Filter documents by index_id

@@ -141,16 +141,16 @@ const ChunkingStrategy = ({
     console.log('🔄 Starting to load available documents...'); // Debug log
     
     try {
-      const response = await fetch('http://localhost:5000/api/documents');
+      const response = await fetch('/api/documents');
       console.log('📡 API Response status:', response.status, response.ok); // Debug log
       
       if (response.ok) {
-        const documents = await response.json();
-        console.log('📄 Raw documents from API:', documents); // Debug log
-        console.log('📄 API Response type:', typeof documents, 'Array?', Array.isArray(documents)); // Debug log
+        const data = await response.json();
+        console.log('📄 Raw documents from API:', data); // Debug log
+        console.log('📄 API Response type:', typeof data, 'Array?', Array.isArray(data)); // Debug log
         
-        // Handle different response formats - API returns array directly
-        const documentsArray = Array.isArray(documents) ? documents : (documents.documents || []);
+        // Handle different response formats - API returns object with documents array
+        const documentsArray = data.documents || (Array.isArray(data) ? data : []);
         console.log('📋 Processed documents array (length: ' + documentsArray.length + '):', documentsArray); // Debug log
         
         // More lenient filtering for all document types
@@ -237,7 +237,7 @@ const ChunkingStrategy = ({
       setLoadingDocument(true);
       console.log('Loading document content for ID:', documentId); // Debug log
       
-      const response = await fetch(`http://localhost:5000/api/documents/${documentId}/preview`);
+      const response = await fetch(`/api/documents/${documentId}/preview`);
       console.log('Document preview response:', response.status); // Debug log
       
       if (response.ok) {

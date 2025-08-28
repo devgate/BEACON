@@ -230,20 +230,68 @@ const KnowledgeBaseSettings = ({
 
   const fetchAvailableDocuments = async () => {
     try {
-      // Fetch all documents directly from API  
-      const response = await fetch('http://localhost:5000/api/documents');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const documents = await response.json();
+      // Use full URL to bypass proxy issues during development
+      const baseUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : '';
       
-      // Filter for ready documents only - support multiple status values
-      const readyDocuments = documents.filter(doc => 
-        ['Ready', 'Success', 'ready', 'success', 'completed', 'processed'].includes(doc.status) && 
-        (doc.file_name || doc.title)
-      ).slice(0, 10); // Limit to 10 documents for performance
+      // If selectedIndexId is present, fetch documents for that knowledge base
+      let endpoint = `${baseUrl}/api/documents`;
+      if (selectedIndexId) {
+        // Try to fetch documents for specific knowledge base first
+        endpoint = `${baseUrl}/api/knowledge-bases/${selectedIndexId}/documents`;
+      }
+      
+      const response = await fetch(endpoint);
+      
+      // If KB-specific endpoint fails, fall back to all documents
+      if (!response.ok && selectedIndexId) {
+        console.log('Knowledge base specific endpoint not available, fetching all documents');
+        const fallbackResponse = await fetch(`${baseUrl}/api/documents`);
+        if (!fallbackResponse.ok) {
+          throw new Error(`HTTP ${fallbackResponse.status}: ${fallbackResponse.statusText}`);
+        }
+        const fallbackData = await fallbackResponse.json();
+        const documents = fallbackData.documents || (Array.isArray(fallbackData) ? fallbackData : []);
+        
+        // Filter documents by knowledge_base_id if selectedIndexId is present
+        const filteredDocs = selectedIndexId 
+          ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId || doc.category_id == selectedIndexId)
+          : documents;
+        
+        const readyDocuments = filteredDocs.filter(doc => {
+          // Accept documents with ready status or no status field (which means ready)
+          const hasValidStatus = !doc.status || 
+            ['Ready', 'Success', 'ready', 'success', 'completed', 'processed', 'Processing'].includes(doc.status);
+          const hasFileName = doc.file_name || doc.title;
+          return hasValidStatus && hasFileName;
+        }).slice(0, 10);
+        
+        setAvailableDocuments(readyDocuments);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      // Handle API response format (object with documents array)
+      const documents = data.documents || (Array.isArray(data) ? data : []);
+      
+      // Filter documents by knowledge_base_id if selectedIndexId is present
+      const filteredDocs = selectedIndexId 
+        ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId || doc.category_id == selectedIndexId)
+        : documents;
+      
+      // Filter for ready documents only - support multiple status values or no status
+      const readyDocuments = filteredDocs.filter(doc => {
+        // Accept documents with ready status or no status field (which means ready)
+        const hasValidStatus = !doc.status || 
+          ['Ready', 'Success', 'ready', 'success', 'completed', 'processed', 'Processing'].includes(doc.status);
+        const hasFileName = doc.file_name || doc.title;
+        return hasValidStatus && hasFileName;
+      }).slice(0, 10); // Limit to 10 documents for performance
       
       setAvailableDocuments(readyDocuments);
+      console.log(`Loaded ${readyDocuments.length} documents for Knowledge Base ${selectedIndexId}`);
     } catch (error) {
       console.error('Failed to fetch documents:', error);
       setAvailableDocuments([]);
@@ -253,39 +301,76 @@ const KnowledgeBaseSettings = ({
   const fetchDocumentText = async (documentId) => {
     setLoadingPreview(true);
     try {
-      // Fetch all documents from API and find the selected one
-      const response = await fetch('http://localhost:5000/api/documents');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Use full URL to bypass proxy issues during development
+      const baseUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : '';
+      
+      // Try document preview API first
+      let documentText = '';
+      let selectedDoc = null;
+      
+      try {
+        const previewResponse = await fetch(`${baseUrl}/api/documents/${documentId}/preview`);
+        if (previewResponse.ok) {
+          const previewData = await previewResponse.json();
+          documentText = previewData.text_content || '';
+          selectedDoc = {
+            id: documentId,
+            title: previewData.metadata?.file_name || 'Unknown Document',
+            file_name: previewData.metadata?.file_name
+          };
+          
+          console.log('Document preview loaded successfully:', {
+            id: documentId,
+            title: selectedDoc.title,
+            contentLength: documentText.length,
+            hasImages: previewData.images?.length || 0
+          });
+        }
+      } catch (previewError) {
+        console.warn('Document preview API failed, falling back to documents list:', previewError);
       }
       
-      const documents = await response.json();
-      const selectedDoc = documents.find(doc => doc.id.toString() === documentId.toString());
-      
-      if (!selectedDoc) {
-        throw new Error('Document not found');
+      // Fallback: Get document from documents list
+      if (!documentText || !selectedDoc) {
+        const response = await fetch(`${baseUrl}/api/documents`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        const documents = data.documents || (Array.isArray(data) ? data : []);
+        selectedDoc = documents.find(doc => doc.id.toString() === documentId.toString());
+        
+        if (!selectedDoc) {
+          throw new Error('Document not found');
+        }
+        
+        // Use the actual document content with multiple fallback options
+        documentText = selectedDoc.content || 
+                      selectedDoc.text || 
+                      selectedDoc.extracted_text ||
+                      selectedDoc.raw_content ||
+                      `샘플 문서 내용입니다. 이것은 ${selectedDoc.file_name || selectedDoc.title || '문서'}의 미리보기를 위한 예시 텍스트입니다. 실제 청킹 전략을 테스트하기 위해 여러 문장으로 구성되어 있습니다. 첫 번째 문단에는 기본적인 정보가 포함되어 있고, 두 번째 문단에는 더 상세한 내용이 들어있습니다.
+
+이 문서는 다양한 청킹 전략의 효과를 비교하기 위한 목적으로 작성되었습니다. 문장 기반 청킹은 자연스러운 경계를 유지하며, 단락 기반 청킹은 논리적 구조를 보존합니다. 의미 기반 청킹은 내용의 맥락을 고려하여 분할하고, 슬라이딩 윈도우는 정보 손실을 최소화합니다.
+
+추가로, 이 예시 텍스트는 한국어 처리에 최적화된 청킹 전략을 테스트하기 위해 다양한 문장 구조와 단락을 포함합니다. 긴 복합 문장과 짧은 단순 문장이 혼재되어 있어, 각 전략의 특성을 잘 보여줄 수 있습니다.`;
       }
       
-      // Use the actual document content with multiple fallback options
-      const documentText = selectedDoc.content || 
-                           selectedDoc.text || 
-                           selectedDoc.extracted_text ||
-                           selectedDoc.raw_content ||
-                           `샘플 문서 내용입니다. 이것은 ${selectedDoc.file_name || selectedDoc.title || '문서'}의 미리보기를 위한 예시 텍스트입니다. 
-                           실제 청킹 전략을 테스트하기 위해 여러 문장으로 구성되어 있습니다. 
-                           첫 번째 문단에는 기본적인 정보가 포함되어 있고, 두 번째 문단에는 더 상세한 내용이 들어있습니다.
-                           
-                           이 문서는 다양한 청킹 전략의 효과를 비교하기 위한 목적으로 작성되었습니다. 
-                           문장 기반 청킹은 자연스러운 경계를 유지하며, 단락 기반 청킹은 논리적 구조를 보존합니다.
-                           의미 기반 청킹은 내용의 맥락을 고려하여 분할하고, 슬라이딩 윈도우는 정보 손실을 최소화합니다.`;
+      // Ensure we have valid text content
+      if (!documentText || documentText.trim().length === 0) {
+        throw new Error('Document has no readable text content');
+      }
       
       setDocumentText(documentText);
       
-      console.log('Document loaded:', {
+      console.log('Final document loaded:', {
         id: selectedDoc.id,
         title: selectedDoc.title || selectedDoc.file_name,
         contentLength: documentText.length,
-        hasContent: !!selectedDoc.content
+        hasRealContent: !documentText.includes('샘플 문서 내용입니다')
       });
       
       // Generate preview chunks based on current settings
@@ -302,9 +387,11 @@ const KnowledgeBaseSettings = ({
     } catch (error) {
       console.error('Failed to fetch document text:', error);
       setNotification({
-        message: 'Failed to load document content for preview',
+        message: `문서 콘텐츠 로딩 실패: ${error.message}`,
         type: 'error'
       });
+      setDocumentText('');
+      setPreviewChunks([]);
     } finally {
       setLoadingPreview(false);
     }
@@ -1772,10 +1859,19 @@ const KnowledgeBaseSettings = ({
                             {/* Enhanced Chunk Content */}
                             <div className="chunk-content-wrapper">
                               <div className="chunk-content">
-                                {chunk.text && chunk.text.length > 300 ? 
-                                  `${chunk.text.substring(0, 300)}...` : 
-                                  chunk.text || chunk
-                                }
+                                {chunk.text ? (
+                                  chunk.text.length > 300 ? 
+                                    `${chunk.text.substring(0, 300)}...` : 
+                                    chunk.text
+                                ) : (
+                                  <div className="text-gray-500 italic text-center p-4">
+                                    <div className="text-sm mb-1">청크 #{chunk.id || index + 1}</div>
+                                    <div className="text-xs">콘텐츠를 불러올 수 없습니다</div>
+                                    <div className="text-xs mt-1">
+                                      토큰: {chunk.tokens || 0} | 타입: {chunk.type || 'unknown'}
+                                    </div>
+                                  </div>
+                                )}
                                 
                                 {/* Enhanced Quality indicators */}
                                 <div className="quality-indicators">
