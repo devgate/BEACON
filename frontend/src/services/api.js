@@ -217,6 +217,19 @@ export const documentService = {
   }
 };
 
+// ChromaDB Collection Service
+export const collectionService = {
+  async getCollectionStats(collectionId) {
+    const response = await api.get(`/chroma/collections/${collectionId}/stats`);
+    return response.data;
+  },
+
+  async getCollectionList() {
+    const response = await api.get('/chroma/collections');
+    return response.data;
+  }
+};
+
 export const weatherService = {
   async getWeather() {
     const response = await api.get('/weather');

@@ -9,7 +9,7 @@ import {
   faCheckCircle,
   faChartLine
 } from '@fortawesome/free-solid-svg-icons';
-import { bedrockService, documentService } from '../../services/api';
+import { bedrockService, documentService, collectionService } from '../../services/api';
 import { 
   chunkingStrategies, 
   generatePreviewChunks, 
@@ -39,6 +39,11 @@ const KnowledgeBaseSettings = ({
   const [previewChunks, setPreviewChunks] = useState([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
+  // State for collection metadata
+  const [collectionMetadata, setCollectionMetadata] = useState(null);
+  const [currentChunkCount, setCurrentChunkCount] = useState(0);
+  const [loadingMetadata, setLoadingMetadata] = useState(false);
+
 
   // State management
   const [embeddingModel, setEmbeddingModel] = useState(null);
@@ -49,23 +54,27 @@ const KnowledgeBaseSettings = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch embedding models from AWS Bedrock API
+  // Fetch embedding models and collection metadata from APIs
   useEffect(() => {
     fetchEmbeddingModels();
     if (selectedIndexId) {
       fetchAvailableDocuments();
+      loadCollectionMetadata();
     }
   }, []);
 
-  // Fetch documents when KB changes
+  // Fetch documents and metadata when KB changes
   useEffect(() => {
     if (selectedIndexId) {
       fetchAvailableDocuments();
+      loadCollectionMetadata();
     } else {
       setAvailableDocuments([]);
       setSelectedDocument(null);
       setDocumentText('');
       setPreviewChunks([]);
+      setCollectionMetadata(null);
+      setCurrentChunkCount(0);
     }
   }, [selectedIndexId]);
 
@@ -135,6 +144,34 @@ const KnowledgeBaseSettings = ({
       });
     } finally {
       setLoadingModels(false);
+    }
+  };
+
+  // Load collection metadata to show current state
+  const loadCollectionMetadata = async () => {
+    if (!selectedIndexId) return;
+    
+    try {
+      setLoadingMetadata(true);
+      
+      const response = await collectionService.getCollectionStats(selectedIndexId);
+      
+      if (response.success && response.stats) {
+        setCollectionMetadata(response.stats);
+        setCurrentChunkCount(response.stats.total_chunks || 0);
+        
+        console.log('Collection metadata loaded:', {
+          collection_id: selectedIndexId,
+          total_chunks: response.stats.total_chunks || 0,
+          embedding_model: response.stats.metadata?.embedding_model_id
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load collection metadata:', error);
+      setCollectionMetadata(null);
+      setCurrentChunkCount(0);
+    } finally {
+      setLoadingMetadata(false);
     }
   };
 
@@ -707,34 +744,49 @@ const KnowledgeBaseSettings = ({
                   <FontAwesomeIcon icon={faChartLine} className="summary-icon" />
                 </div>
                 <div className="summary-details">
-                  <div className="summary-title">예상 결과</div>
+                  <div className="summary-title">청킹 현황</div>
                   <div className="summary-value">
-                    {(() => {
-                      // 현재 설정 기준으로 예상 청크 수 계산
-                      if (previewChunks.length > 0) {
-                        return `${previewChunks.length}개 청크`;
-                      }
-                      
-                      // 미리보기가 없을 때는 현재 설정으로 추정
-                      let estimatedTextLength = documentText && documentText.trim() ? 
-                        countTokens(documentText) : 
-                        selectedDocument ? 3000 : 2000;
-                      
-                      const effectiveChunkSize = chunkSize - chunkOverlap;
-                      const estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / effectiveChunkSize));
-                      
-                      return `약 ${estimatedChunks}개 청크`;
-                    })()}
+                    {loadingMetadata ? (
+                      '로딩 중...'
+                    ) : (
+                      `현재 컬렉션: ${currentChunkCount.toLocaleString()}개 청크`
+                    )}
                   </div>
                   <div className="summary-meta">
-                    <span className="meta-item">
-                      실제 청크: {previewChunks.length > 0 ? `${previewChunks.length}개` : '미리보기 필요'}
-                    </span>
-                    {previewChunks.length > 0 && (
-                      <span className="meta-item success">
-                        미리보기 완료
-                      </span>
-                    )}
+                    {(() => {
+                      // 새 설정으로 예상되는 청크 수 계산
+                      let estimatedChunks = 0;
+                      
+                      if (previewChunks.length > 0) {
+                        estimatedChunks = previewChunks.length;
+                      } else if (documentText && documentText.trim()) {
+                        const estimatedTextLength = countTokens(documentText);
+                        const effectiveChunkSize = chunkSize - chunkOverlap;
+                        estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / effectiveChunkSize));
+                      }
+                      
+                      const chunkDifference = estimatedChunks - currentChunkCount;
+                      
+                      return (
+                        <>
+                          {estimatedChunks > 0 && (
+                            <span className="meta-item">
+                              새 설정 예상: {estimatedChunks.toLocaleString()}개 청크
+                            </span>
+                          )}
+                          {chunkDifference !== 0 && estimatedChunks > 0 && (
+                            <span className={`meta-item ${chunkDifference > 0 ? 'increase' : 'decrease'}`}>
+                              {chunkDifference > 0 ? '+' : ''}{chunkDifference.toLocaleString()}개 변화
+                            </span>
+                          )}
+                          {currentChunkCount === 0 && !loadingMetadata && (
+                            <span className="meta-item warning">
+                              컬렉션이 비어있음
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
