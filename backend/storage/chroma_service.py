@@ -744,27 +744,74 @@ class ChromaService:
             count = collection.count()
             
             if count > 0:
-                # Get sample of documents to analyze
-                sample_size = min(count, 10)
-                sample_docs = collection.peek(sample_size)
+                # Get ALL documents to get accurate statistics
+                all_docs = collection.get(include=["metadatas"])
                 
                 # Analyze metadata
                 unique_docs = set()
-                total_chunks = 0
+                total_chunks = count
+                total_tokens = 0
+                chunk_sizes = []
+                chunk_overlaps = []
+                chunking_strategies = set()
+                embedding_models = set()
                 
-                if sample_docs.get('metadatas'):
-                    for meta in sample_docs['metadatas']:
+                if all_docs.get('metadatas'):
+                    for meta in all_docs['metadatas']:
                         if 'document_id' in meta:
                             unique_docs.add(meta['document_id'])
-                        total_chunks += 1
+                        
+                        # Collect token information
+                        chunk_size = meta.get('chunk_size', 0)
+                        if chunk_size > 0:
+                            chunk_sizes.append(chunk_size)
+                            total_tokens += chunk_size
+                        else:
+                            # Estimate tokens from word count if available
+                            word_count = meta.get('word_count', 0)
+                            estimated_tokens = int(word_count * 1.3) if word_count else 0
+                            total_tokens += estimated_tokens
+                        
+                        # Collect chunk overlap information
+                        chunk_overlap = meta.get('chunk_overlap')
+                        if chunk_overlap is not None:
+                            chunk_overlaps.append(chunk_overlap)
+                        
+                        # Collect chunking strategy information  
+                        strategy = meta.get('chunking_strategy')
+                        if strategy:
+                            chunking_strategies.add(strategy)
+                        
+                        # Collect embedding model info
+                        if 'embedding_model_id' in meta:
+                            embedding_models.add(meta['embedding_model_id'])
+                
+                # Calculate averages
+                avg_chunk_size = sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 512
+                avg_chunk_overlap = sum(chunk_overlaps) / len(chunk_overlaps) if chunk_overlaps else 50
+                
+                # Determine the most common chunking strategy
+                most_common_strategy = 'sentence'  # default
+                if chunking_strategies:
+                    # Use the first strategy found (they should all be the same in a collection)
+                    most_common_strategy = list(chunking_strategies)[0]
+                
+                logger.info(f"Collection {index_id} analysis: strategy={most_common_strategy}, chunk_size={int(avg_chunk_size)}, overlap={int(avg_chunk_overlap)}")
                 
                 return {
                     'exists': True,
                     'collection_name': index_id,
-                    'total_chunks': count,
-                    'estimated_documents': len(unique_docs) if sample_size < count else len(unique_docs),
-                    'sample_size': sample_size,
-                    'is_sample': sample_size < count
+                    'total_chunks': total_chunks,
+                    'total_documents': len(unique_docs),
+                    'total_tokens': total_tokens,
+                    'avg_chunk_size': int(avg_chunk_size),
+                    'embedding_models': list(embedding_models),
+                    'metadata': {
+                        'chunk_size': int(avg_chunk_size),
+                        'chunk_overlap': int(avg_chunk_overlap),
+                        'chunking_strategy': most_common_strategy,
+                        'embedding_model_id': list(embedding_models)[0] if embedding_models else None
+                    }
                 }
             else:
                 return {

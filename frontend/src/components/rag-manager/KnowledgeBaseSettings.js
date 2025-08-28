@@ -165,14 +165,89 @@ const KnowledgeBaseSettings = ({
           total_chunks: response.stats.total_chunks || 0,
           embedding_model: response.stats.metadata?.embedding_model_id
         });
+
+        // Load current collection settings if available
+        if (response.stats.metadata) {
+          loadSettingsFromCollectionMetadata(response.stats.metadata);
+        } else {
+          // Set default to sentence-based strategy (first in array)
+          setChunkingStrategy(chunkingStrategies[0]); // Sentence-based is now first
+          setChunkSize(chunkingStrategies[0].defaultSize);
+          setChunkOverlap(chunkingStrategies[0].defaultOverlap);
+        }
       }
     } catch (error) {
       console.error('Failed to load collection metadata:', error);
       setCollectionMetadata(null);
       setCurrentChunkCount(0);
+      // Still set default to sentence-based even on error
+      setChunkingStrategy(chunkingStrategies[0]);
+      setChunkSize(chunkingStrategies[0].defaultSize);
+      setChunkOverlap(chunkingStrategies[0].defaultOverlap);
     } finally {
       setLoadingMetadata(false);
     }
+  };
+
+  // Load settings from collection metadata
+  const loadSettingsFromCollectionMetadata = (metadata) => {
+    console.log('Loading settings from collection metadata:', metadata);
+    
+    // Load current chunk size from collection if available
+    const loadedChunkSize = metadata.chunk_size || 512;
+    const loadedChunkOverlap = metadata.chunk_overlap || 50;
+    const loadedStrategyId = metadata.chunking_strategy || 'sentence';
+    
+    // Find the strategy based on what's actually stored in ChromaDB
+    let strategy = chunkingStrategies.find(s => s.id === loadedStrategyId);
+    
+    // If the actual stored strategy is found, use it regardless of size range
+    if (strategy) {
+      console.log(`Using actual stored strategy: ${strategy.id} for chunk size ${loadedChunkSize}`);
+      
+      // If chunk size exceeds strategy's normal range, we need to extend the strategy temporarily
+      if (loadedChunkSize > strategy.sizeRange.max) {
+        console.log(`Extending strategy range from ${strategy.sizeRange.max} to ${loadedChunkSize} for stored data`);
+        // Create a temporary extended strategy for display purposes
+        strategy = {
+          ...strategy,
+          sizeRange: {
+            ...strategy.sizeRange,
+            max: Math.max(strategy.sizeRange.max, loadedChunkSize)
+          }
+        };
+      }
+    } else {
+      // Only fallback to compatible strategy if the stored strategy doesn't exist
+      console.log(`Strategy ${loadedStrategyId} not found, finding compatible strategy for chunk size ${loadedChunkSize}`);
+      strategy = chunkingStrategies.find(s => 
+        loadedChunkSize >= s.sizeRange.min && loadedChunkSize <= s.sizeRange.max
+      );
+      
+      // If no compatible strategy found, use paragraph-based (has largest range)
+      if (!strategy) {
+        console.log('No compatible strategy found, using paragraph-based with extended range');
+        strategy = chunkingStrategies.find(s => s.id === 'paragraph') || chunkingStrategies[0];
+      }
+    }
+    
+    // Update all states synchronously
+    setChunkSize(loadedChunkSize);
+    setChunkOverlap(loadedChunkOverlap);
+    setChunkingStrategy(strategy);
+    
+    // Don't set hasChanges since we're loading current settings
+    setHasChanges(false);
+    
+    console.log('Settings loaded and applied:', {
+      chunk_size: loadedChunkSize,
+      chunk_overlap: loadedChunkOverlap,
+      original_strategy: loadedStrategyId,
+      applied_strategy: strategy.id,
+      strategy_name: strategy.name,
+      strategy_range: strategy.sizeRange,
+      total_tokens: metadata.total_tokens
+    });
   };
 
 
@@ -388,11 +463,63 @@ const KnowledgeBaseSettings = ({
   };
 
   // Handler for document selection in preview
-  const handleDocumentSelect = (documentId) => {
+  const handleDocumentSelect = async (documentId) => {
     console.log('Document selected for preview:', documentId);
     if (documentId) {
       setSelectedDocument(documentId);
-      fetchDocumentText(documentId);
+      
+      // Get actual stored chunk count from ChromaDB first
+      try {
+        const response = await fetch(`http://localhost:5000/api/chroma/document/${documentId}`);
+        const docInfo = await response.json();
+        
+        if (docInfo.success && docInfo.document_info) {
+          const actualChunkCount = docInfo.document_info.chunk_count || 0;
+          console.log(`Document ${documentId} has ${actualChunkCount} actual chunks in ChromaDB`);
+          
+          // Get actual chunk contents from ChromaDB
+          try {
+            const chunksResponse = await fetch(`http://localhost:5000/api/chroma/document/${documentId}/chunks`);
+            const chunksData = await chunksResponse.json();
+            
+            if (chunksData.success && chunksData.chunks) {
+              const actualChunks = chunksData.chunks.map((chunkText, i) => ({
+                id: i,
+                text: chunkText,
+                size: `${chunkText.length} chars`,
+                actualChunk: true,
+                chunkIndex: i + 1,
+                totalChunks: chunksData.chunk_count
+              }));
+              
+              setPreviewChunks(actualChunks);
+              setDocumentText(chunksData.chunks.join('\n\n--- 청크 구분 ---\n\n'));
+              
+              console.log(`Loaded ${actualChunks.length} actual chunks from ChromaDB for ${documentId}`);
+              return;
+            }
+          } catch (chunksError) {
+            console.error('Failed to fetch actual chunks:', chunksError);
+          }
+          
+          // Fallback: Create preview chunks showing the actual count
+          const actualChunks = Array.from({length: actualChunkCount}, (_, i) => ({
+            id: i,
+            text: `실제 저장된 청크 ${i + 1}/${actualChunkCount} (내용 로딩 실패)`,
+            size: 'varies',
+            actualChunk: true
+          }));
+          
+          setPreviewChunks(actualChunks);
+          return;
+        } else {
+          console.log('No ChromaDB info available, falling back to text simulation');
+          fetchDocumentText(documentId);
+        }
+      } catch (error) {
+        console.error('Failed to get actual chunk count:', error);
+        fetchDocumentText(documentId);
+      }
     } else {
       setSelectedDocument(null);
       setDocumentText('');
@@ -451,11 +578,12 @@ const KnowledgeBaseSettings = ({
     if (selectedIndexId) {
       loadSettings();
     } else {
-      // Reset to defaults when no KB selected
+      // Reset to defaults when no KB selected - use fixed-size strategy
       setEmbeddingModel(null);
-      setChunkingStrategy(null);
-      setChunkSize(512);
-      setChunkOverlap(50);
+      const fixedSizeStrategy = chunkingStrategies.find(s => s.id === 'fixed') || chunkingStrategies[0];
+      setChunkingStrategy(fixedSizeStrategy);
+      setChunkSize(fixedSizeStrategy.defaultSize);
+      setChunkOverlap(fixedSizeStrategy.defaultOverlap);
       setNormalize(true);
       setHasChanges(false);
     }
@@ -483,12 +611,14 @@ const KnowledgeBaseSettings = ({
       setChunkOverlap(settings.chunkOverlap || 50);
       setNormalize(settings.normalize !== false);
     } else {
-      // Set defaults for new knowledge base
+      // Set defaults for new knowledge base - use sentence-based strategy
       const recommendedModel = embeddingModels.find(m => m.recommended) || embeddingModels[0];
       setEmbeddingModel(recommendedModel);
-      setChunkingStrategy(chunkingStrategies[0]); // Sentence-based as default
-      setChunkSize(512);
-      setChunkOverlap(50);
+      
+      const sentenceStrategy = chunkingStrategies.find(s => s.id === 'sentence') || chunkingStrategies[0];
+      setChunkingStrategy(sentenceStrategy);
+      setChunkSize(sentenceStrategy.defaultSize);
+      setChunkOverlap(sentenceStrategy.defaultOverlap);
       setNormalize(true);
     }
     
@@ -498,9 +628,20 @@ const KnowledgeBaseSettings = ({
   // Re-load settings when models are fetched
   useEffect(() => {
     if (embeddingModels.length > 0 && selectedIndexId) {
-      loadSettings();
+      // Only load localStorage settings if we don't have collection metadata
+      if (!collectionMetadata || !collectionMetadata.metadata) {
+        console.log('Loading localStorage settings - no collection metadata available');
+        loadSettings();
+      } else {
+        console.log('Skipping localStorage settings - collection metadata already loaded');
+        // Just set the embedding model but don't override chunking settings
+        const recommendedModel = embeddingModels.find(m => m.recommended) || embeddingModels[0];
+        if (recommendedModel && !embeddingModel) {
+          setEmbeddingModel(recommendedModel);
+        }
+      }
     }
-  }, [embeddingModels]);
+  }, [embeddingModels, collectionMetadata]);
 
   const handleEmbeddingModelChange = (modelId) => {
     const model = embeddingModels.find(m => m.id === modelId);
@@ -623,9 +764,12 @@ const KnowledgeBaseSettings = ({
       if (recommendedModel) {
         setEmbeddingModel(recommendedModel);
       }
-      setChunkingStrategy(chunkingStrategies[0]);
-      setChunkSize(512);
-      setChunkOverlap(50);
+      
+      // Reset to sentence-based strategy (default)
+      const sentenceStrategy = chunkingStrategies.find(s => s.id === 'sentence') || chunkingStrategies[0];
+      setChunkingStrategy(sentenceStrategy);
+      setChunkSize(sentenceStrategy.defaultSize);
+      setChunkOverlap(sentenceStrategy.defaultOverlap);
       setNormalize(true);
       setHasChanges(true);
     }
@@ -748,44 +892,145 @@ const KnowledgeBaseSettings = ({
                   <div className="summary-value">
                     {loadingMetadata ? (
                       '로딩 중...'
+                    ) : selectedDocument ? (
+                      `선택 문서: ${(() => {
+                        if (previewChunks.length > 0) {
+                          return `${previewChunks.length}개 청크`;
+                        } else if (documentText && documentText.trim()) {
+                          const estimatedTextLength = countTokens(documentText);
+                          const effectiveChunkSize = chunkSize - chunkOverlap;
+                          const estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / effectiveChunkSize));
+                          return `약 ${estimatedChunks}개 청크 예상`;
+                        }
+                        return '미리보기 필요';
+                      })()}`
                     ) : (
                       `현재 컬렉션: ${currentChunkCount.toLocaleString()}개 청크`
                     )}
                   </div>
                   <div className="summary-meta">
                     {(() => {
-                      // 새 설정으로 예상되는 청크 수 계산
-                      let estimatedChunks = 0;
-                      
-                      if (previewChunks.length > 0) {
-                        estimatedChunks = previewChunks.length;
-                      } else if (documentText && documentText.trim()) {
-                        const estimatedTextLength = countTokens(documentText);
-                        const effectiveChunkSize = chunkSize - chunkOverlap;
-                        estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / effectiveChunkSize));
-                      }
-                      
-                      const chunkDifference = estimatedChunks - currentChunkCount;
-                      
-                      return (
-                        <>
-                          {estimatedChunks > 0 && (
+                      if (selectedDocument) {
+                        // 선택된 문서가 있는 경우: 문서별 청킹 정보 표시
+                        const docName = availableDocuments.find(doc => doc.id.toString() === selectedDocument.toString())?.file_name || 'Unknown';
+                        
+                        return (
+                          <>
                             <span className="meta-item">
-                              새 설정 예상: {estimatedChunks.toLocaleString()}개 청크
+                              문서: {docName.length > 20 ? `${docName.substring(0, 20)}...` : docName}
                             </span>
-                          )}
-                          {chunkDifference !== 0 && estimatedChunks > 0 && (
-                            <span className={`meta-item ${chunkDifference > 0 ? 'increase' : 'decrease'}`}>
-                              {chunkDifference > 0 ? '+' : ''}{chunkDifference.toLocaleString()}개 변화
-                            </span>
-                          )}
-                          {currentChunkCount === 0 && !loadingMetadata && (
-                            <span className="meta-item warning">
-                              컬렉션이 비어있음
-                            </span>
-                          )}
-                        </>
-                      );
+                            {documentText && (
+                              <span className="meta-item">
+                                텍스트: {countTokens(documentText).toLocaleString()} 토큰
+                              </span>
+                            )}
+                            {previewChunks.length > 0 && (
+                              <span className="meta-item success">
+                                미리보기 완료
+                              </span>
+                            )}
+                          </>
+                        );
+                      } else {
+                        // 컬렉션 전체 정보 표시 - 개별 문서 청킹 시뮬레이션 기반 계산
+                        let estimatedChunks = 0;
+                        
+                        // 개별 문서들의 실제 청킹 시뮬레이션 결과를 합산하여 계산
+                        if (availableDocuments && availableDocuments.length > 0) {
+                          console.log('Calculating per-document chunk estimates with actual chunking service:', {
+                            documentsCount: availableDocuments.length,
+                            currentSettings: { chunkSize, chunkOverlap, strategy: chunkingStrategy?.id },
+                            collectionCurrentChunks: currentChunkCount
+                          });
+                          
+                          // 각 문서에 대해 실제 청킹 서비스를 사용한 시뮬레이션 수행
+                          for (const doc of availableDocuments) {
+                            try {
+                              // 문서의 실제 텍스트 가져오기 (캐시된 documentText 사용 또는 API 호출)
+                              let docText = '';
+                              
+                              // 현재 선택된 문서와 같으면 이미 로딩된 텍스트 사용
+                              if (selectedDocument && selectedDocument.toString() === doc.id.toString() && documentText) {
+                                docText = documentText;
+                              } else {
+                                // API에서 문서 텍스트 가져오기 (실제 구현에서는 캐싱 필요)
+                                console.log(`Need to fetch text for document ${doc.file_name} (id: ${doc.id})`);
+                                // 임시로 추정된 텍스트 길이 사용 (실제 텍스트를 가져올 수 없는 경우)
+                                const docChunkCount = doc.chunk_count || 1;
+                                const collectionChunkSize = collectionMetadata?.metadata?.chunk_size || 512;
+                                const collectionOverlap = collectionMetadata?.metadata?.chunk_overlap || 50;
+                                const collectionEffectiveChunkSize = Math.max(1, collectionChunkSize - collectionOverlap);
+                                const estimatedDocTokens = docChunkCount * collectionEffectiveChunkSize;
+                                
+                                // 임시 텍스트 생성 (실제 토큰 수에 기반한 더미 텍스트)
+                                const wordsPerToken = 0.75; // 대략적인 토큰-단어 비율
+                                const estimatedWords = Math.ceil(estimatedDocTokens * wordsPerToken);
+                                docText = Array(estimatedWords).fill('word').join(' ');
+                              }
+                              
+                              // 실제 청킹 서비스를 사용하여 예상 청크 수 계산
+                              if (docText && chunkingStrategy) {
+                                const chunks = generatePreviewChunks(docText, chunkingStrategy, chunkSize, chunkOverlap);
+                                const docEstimatedChunks = chunks.length;
+                                
+                                console.log(`Document ${doc.file_name} actual chunking simulation:`, {
+                                  original_chunks: doc.chunk_count || 0,
+                                  text_length: docText.length,
+                                  simulated_chunks: docEstimatedChunks,
+                                  strategy: chunkingStrategy.id,
+                                  chunk_size: chunkSize,
+                                  overlap: chunkOverlap
+                                });
+                                
+                                estimatedChunks += docEstimatedChunks;
+                              }
+                            } catch (error) {
+                              console.error(`Failed to simulate chunking for document ${doc.file_name}:`, error);
+                              // 실패한 경우 기존 수학적 계산으로 폴백
+                              const docChunkCount = doc.chunk_count || 1;
+                              const collectionChunkSize = collectionMetadata?.metadata?.chunk_size || 512;
+                              const collectionOverlap = collectionMetadata?.metadata?.chunk_overlap || 50;
+                              const collectionEffectiveChunkSize = Math.max(1, collectionChunkSize - collectionOverlap);
+                              const estimatedDocTokens = docChunkCount * collectionEffectiveChunkSize;
+                              const newEffectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
+                              const docEstimatedChunks = Math.max(1, Math.ceil(estimatedDocTokens / newEffectiveChunkSize));
+                              estimatedChunks += docEstimatedChunks;
+                            }
+                          }
+                        } else if (collectionMetadata && collectionMetadata.total_tokens) {
+                          // 문서 목록이 없는 경우 전체 토큰 기반 계산 (백업)
+                          const effectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
+                          estimatedChunks = Math.max(1, Math.ceil(collectionMetadata.total_tokens / effectiveChunkSize));
+                        } else if (currentChunkCount > 0) {
+                          // 메타데이터가 없는 경우 현재 청크 수 기반으로 추정
+                          const currentAvgChunkSize = 512; // 기존 설정 추정값
+                          const newEffectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
+                          const sizeRatio = currentAvgChunkSize / newEffectiveChunkSize;
+                          estimatedChunks = Math.max(1, Math.ceil(currentChunkCount * sizeRatio));
+                        }
+                        
+                        const chunkDifference = estimatedChunks - currentChunkCount;
+                        
+                        return (
+                          <>
+                            {estimatedChunks > 0 && (
+                              <span className="meta-item">
+                                새 설정 예상: {estimatedChunks.toLocaleString()}개 청크
+                              </span>
+                            )}
+                            {chunkDifference !== 0 && estimatedChunks > 0 && (
+                              <span className={`meta-item ${chunkDifference > 0 ? 'increase' : 'decrease'}`}>
+                                {chunkDifference > 0 ? '+' : ''}{chunkDifference.toLocaleString()}개 변화
+                              </span>
+                            )}
+                            {currentChunkCount === 0 && !loadingMetadata && (
+                              <span className="meta-item warning">
+                                컬렉션이 비어있음
+                              </span>
+                            )}
+                          </>
+                        );
+                      }
                     })()}
                   </div>
                 </div>

@@ -93,6 +93,28 @@ def get_chroma_document_info(document_id):
         logger.error(f"Failed to get document info: {e}")
         return jsonify({'error': f'Failed to get document info: {str(e)}'}), 500
 
+@chroma_bp.route('/api/chroma/document/<document_id>/chunks')
+def get_chroma_document_chunks(document_id):
+    """Get actual chunks content for a specific document in Chroma DB"""
+    if not CHROMA_ENABLED or not chroma_service:
+        return jsonify({'error': 'Chroma DB not available'}), 503
+    
+    try:
+        chunks = chroma_service.get_document_chunks(document_id)
+        doc_info = chroma_service.get_document_info(document_id)
+        
+        return jsonify({
+            'success': True,
+            'document_id': document_id,
+            'chunk_count': len(chunks),
+            'chunks': chunks,
+            'document_info': doc_info
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get document chunks: {e}")
+        return jsonify({'error': f'Failed to get document chunks: {str(e)}'}), 500
+
 @chroma_bp.route('/api/chroma/document/<document_id>', methods=['DELETE'])
 def delete_chroma_document(document_id):
     """Delete a document from Chroma DB"""

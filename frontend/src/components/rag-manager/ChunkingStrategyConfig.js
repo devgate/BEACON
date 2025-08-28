@@ -17,6 +17,13 @@ const ChunkingStrategyConfig = ({
   loadingPreview,
   setNotification
 }) => {
+  // Debug component props
+  console.log('ChunkingStrategyConfig render:', {
+    chunkSize,
+    chunkOverlap,
+    strategyId: selectedStrategy?.id,
+    strategyName: selectedStrategy?.name
+  });
   const handleQuickStrategyTest = (strategy) => {
     onStrategyChange(strategy.id);
     setNotification({

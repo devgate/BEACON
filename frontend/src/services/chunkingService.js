@@ -6,15 +6,16 @@ export const chunkingStrategies = [
     defaultSize: 512,
     defaultOverlap: 50,
     sizeRange: { min: 256, max: 2048 },
-    features: ['문맥 보존', '자연스러운 분할', '빠른 처리']
+    features: ['문맥 보존', '자연스러운 분할', '빠른 처리'],
+    recommended: true
   },
   {
     id: 'fixed',
     name: '고정 크기 (Fixed Size)',
     description: '일정한 토큰 수로 균등하게 분할',
-    defaultSize: 1024,
-    defaultOverlap: 100,
-    sizeRange: { min: 512, max: 4096 },
+    defaultSize: 512,
+    defaultOverlap: 50,
+    sizeRange: { min: 256, max: 2048 },
     features: ['예측 가능한 크기', '균등 분할', '효율적 저장']
   },
   {
@@ -23,7 +24,7 @@ export const chunkingStrategies = [
     description: '단락 단위로 문서를 분할하는 전략',
     defaultSize: 768,
     defaultOverlap: 75,
-    sizeRange: { min: 512, max: 3072 },
+    sizeRange: { min: 512, max: 4096 },
     features: ['논리적 구조 유지', '문단 보존', '중간 크기 청크']
   },
   {
@@ -188,7 +189,7 @@ export const chunkByFixedSize = (text, size, overlap) => {
       }
     }
     
-    if (currentChunk.trim()) {
+    if (currentChunk.trim() && currentTokens >= Math.floor(size * 0.1)) {
       chunks.push({
         id: chunks.length + 1,
         text: currentChunk.trim(),
@@ -200,14 +201,32 @@ export const chunkByFixedSize = (text, size, overlap) => {
       });
     }
     
-    if (overlap > 0 && chunks.length > 0) {
-      let overlapWords = Math.floor(wordsInChunk * (overlap / currentTokens));
-      overlapWords = Math.max(1, Math.min(overlapWords, wordsInChunk - 1));
-      currentPosition = Math.max(chunkStartPosition + 1, currentPosition - overlapWords);
+    // Calculate advancement position with proper overlap handling
+    if (overlap > 0 && currentTokens > overlap && wordsInChunk > 1) {
+      // Ensure overlap doesn't exceed 80% of chunk size to prevent pathological behavior
+      const maxOverlap = Math.min(overlap, Math.floor(currentTokens * 0.8));
+      let overlapWords = Math.floor(wordsInChunk * (maxOverlap / currentTokens));
+      
+      // Ensure minimum advancement: at least 25% of chunk or 5 words, whichever is larger
+      const minAdvancement = Math.max(5, Math.floor(wordsInChunk * 0.25));
+      const actualAdvancement = Math.max(minAdvancement, wordsInChunk - overlapWords);
+      
+      currentPosition = chunkStartPosition + actualAdvancement;
+    } else {
+      // No overlap: advance by at least half the chunk size or all remaining words
+      const advancement = Math.max(Math.floor(wordsInChunk * 0.5), 1);
+      currentPosition = chunkStartPosition + advancement;
     }
     
+    // Safety check to prevent infinite loops
     if (currentPosition <= chunkStartPosition) {
-      currentPosition = chunkStartPosition + 1;
+      currentPosition = chunkStartPosition + Math.max(1, Math.floor(wordsInChunk * 0.5));
+    }
+    
+    // Early termination for small remaining content
+    const remainingWords = words.length - currentPosition;
+    if (remainingWords < Math.floor(size * 0.1 / 5)) { // Rough estimate: size/5 words
+      break;
     }
   }
   
