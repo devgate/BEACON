@@ -18,6 +18,7 @@ import {
   faCopy,
   faExpand
 } from '@fortawesome/free-solid-svg-icons';
+import { chunkBySentence, chunkByParagraph, chunkByFixedSize, chunkBySemantic } from '../../services/chunkingService';
 
 const ChunkingStrategy = ({ 
   strategy, 
@@ -267,10 +268,10 @@ const ChunkingStrategy = ({
 
     switch (selectedStrategy) {
       case 'sentence':
-        chunks = chunkBySentences(text, chunkSize, overlap);
+        chunks = chunkBySentence(text, chunkSize, overlap);
         break;
       case 'paragraph':
-        chunks = chunkByParagraphs(text, chunkSize, overlap);
+        chunks = chunkByParagraph(text, chunkSize, overlap);
         break;
       case 'fixed':
         chunks = chunkByFixedSize(text, chunkSize, overlap);
@@ -279,7 +280,7 @@ const ChunkingStrategy = ({
         chunks = chunkBySemantic(text, chunkSize, overlap);
         break;
       default:
-        chunks = chunkBySentences(text, chunkSize, overlap);
+        chunks = chunkBySentence(text, chunkSize, overlap);
     }
 
     const endTime = performance.now();
@@ -301,82 +302,9 @@ const ChunkingStrategy = ({
     setPreviewChunks(showFullPreview ? chunks : chunks.slice(0, 8)); // Show first 8 chunks by default
   };
 
-  const chunkBySentences = (text, size, overlapSize) => {
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
-    const chunks = [];
-    let currentChunk = '';
-    let overlapBuffer = [];
 
-    sentences.forEach(sentence => {
-      if ((currentChunk + sentence).length <= size) {
-        currentChunk += sentence + ' ';
-      } else {
-        if (currentChunk) {
-          chunks.push(currentChunk.trim());
-          
-          // Calculate overlap
-          const words = currentChunk.split(' ');
-          const overlapWords = Math.floor(overlapSize / 10); // Approximate
-          overlapBuffer = words.slice(-overlapWords);
-          currentChunk = overlapBuffer.join(' ') + ' ' + sentence;
-        } else {
-          currentChunk = sentence;
-        }
-      }
-    });
 
-    if (currentChunk) {
-      chunks.push(currentChunk.trim());
-    }
 
-    return chunks;
-  };
-
-  const chunkByParagraphs = (text, size, overlapSize) => {
-    const paragraphs = text.split(/\n\n+/);
-    const chunks = [];
-    let currentChunk = '';
-
-    paragraphs.forEach(para => {
-      if ((currentChunk + para).length <= size) {
-        currentChunk += para + '\n\n';
-      } else {
-        if (currentChunk) {
-          chunks.push(currentChunk.trim());
-          currentChunk = para + '\n\n';
-        } else {
-          // Split large paragraph
-          const subChunks = chunkByFixedSize(para, size, overlapSize);
-          chunks.push(...subChunks);
-        }
-      }
-    });
-
-    if (currentChunk) {
-      chunks.push(currentChunk.trim());
-    }
-
-    return chunks;
-  };
-
-  const chunkByFixedSize = (text, size, overlapSize) => {
-    const chunks = [];
-    let start = 0;
-
-    while (start < text.length) {
-      const end = Math.min(start + size, text.length);
-      chunks.push(text.substring(start, end));
-      start = end - overlapSize;
-    }
-
-    return chunks;
-  };
-
-  const chunkBySemantic = (text, size, overlapSize) => {
-    // Simplified semantic chunking - split by sections/headers
-    const sections = text.split(/\n(?=[A-Z])/);
-    return chunkByParagraphs(sections.join('\n\n'), size, overlapSize);
-  };
 
   const handleStrategySelect = (strategyId) => {
     const strategy = strategies.find(s => s.id === strategyId);

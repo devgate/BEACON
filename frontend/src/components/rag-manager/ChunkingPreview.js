@@ -263,17 +263,6 @@ const ChunkingPreview = ({
                       </div>
                     ))}
                     
-                    {previewChunks.length > 10 && (
-                      <div className="more-chunks-indicator">
-                        <FontAwesomeIcon icon={faEllipsisH} className="more-chunks-icon" />
-                        <div className="more-chunks-text">
-                          총 {previewChunks.length}개 청크 중 처음 10개 표시
-                        </div>
-                        <div className="more-chunks-detail">
-                          모든 청크는 고급 지표를 포함: 토큰 수, 일관성 점수, 품질 지표
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}

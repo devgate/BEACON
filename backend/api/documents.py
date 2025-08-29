@@ -194,6 +194,30 @@ def upload_file():
     chunk_overlap = int(request.form.get('chunk_overlap', 100))
     index_id = request.form.get('index_id')  # Get knowledge base index ID
     
+    # If uploading to existing knowledge base, load existing settings
+    if index_id and CHROMA_ENABLED:
+        try:
+            kb_stats = chroma_service.get_collection_stats_by_kb(index_id)
+            if kb_stats and kb_stats.get('total_chunks', 0) > 0:
+                # Use existing settings if available
+                existing_strategy = kb_stats.get('chunking_strategy')
+                existing_chunk_size = kb_stats.get('chunk_size')
+                existing_chunk_overlap = kb_stats.get('chunk_overlap')
+                
+                if existing_strategy:
+                    chunk_strategy = existing_strategy
+                    logger.info(f"Using existing chunking strategy: {chunk_strategy}")
+                
+                if existing_chunk_size:
+                    chunk_size = int(existing_chunk_size)
+                    logger.info(f"Using existing chunk size: {chunk_size}")
+                    
+                if existing_chunk_overlap:
+                    chunk_overlap = int(existing_chunk_overlap)
+                    logger.info(f"Using existing chunk overlap: {chunk_overlap}")
+        except Exception as e:
+            logger.warning(f"Could not load existing KB settings: {e}, using provided parameters")
+    
     if file and allowed_file(file.filename):
         processing_start_time = time.time()
         
@@ -350,6 +374,10 @@ def _process_with_chroma(text_content, filename, doc_id, chunk_strategy,
             elif chunk_strategy == 'token':
                 chunks = DocumentChunker.chunk_by_tokens(
                     text_content, max_tokens=chunk_size//4, overlap_tokens=chunk_overlap//4
+                )
+            elif chunk_strategy == 'by_title':
+                chunks = DocumentChunker.chunk_by_title(
+                    text_content, max_chunk_size=chunk_size, overlap=chunk_overlap
                 )
             else:
                 chunks = DocumentChunker.chunk_by_sentences(text_content, chunk_size, chunk_overlap)
@@ -697,7 +725,23 @@ def get_document_preview(doc_id):
             return jsonify({'error': 'Document not found'}), 404
         
         file_path = doc.get('file_path')
+        
+        # If stored file path doesn't exist, try to find the actual file
         file_exists = file_path and os.path.exists(file_path)
+        if not file_exists and file_path:
+            # Try to find file with timestamp prefix in uploads directory
+            upload_dir = os.path.dirname(file_path) or 'uploads'
+            original_filename = os.path.basename(file_path)
+            
+            if os.path.exists(upload_dir):
+                for filename in os.listdir(upload_dir):
+                    if filename.endswith('_' + original_filename) or filename == original_filename:
+                        potential_path = os.path.join(upload_dir, filename)
+                        if os.path.exists(potential_path):
+                            file_path = potential_path
+                            file_exists = True
+                            logger.info(f"Found actual file: {file_path} for doc {doc.get('id')}")
+                            break
         
         # If no physical file, try to get content from ChromaDB only
         if not file_exists:
@@ -715,23 +759,62 @@ def get_document_preview(doc_id):
             }
         }
         
-        # Try to get text content from ChromaDB first (chunked content)
+        # For consistent chunking preview, prioritize ChromaDB's original text over file extraction
+        # This ensures preview uses same text that was used to create the stored chunks
         text_content = ""
+        
+        # First, try to reconstruct original text from ChromaDB chunks
         if CHROMA_ENABLED and chroma_service:
+            try:
+                chunks = chroma_service.get_document_chunks(str(doc.get('id')))
+                if chunks and len(chunks) > 0:
+                    # Reconstruct the original text from stored chunks
+                    # Note: This may not be perfect reconstruction, but it's closer to original
+                    text_content = '\n\n'.join(chunks)
+                    logger.info(f"Reconstructed original text from {len(chunks)} ChromaDB chunks for doc {doc.get('id')}: {len(text_content)} characters")
+            except Exception as e:
+                logger.warning(f"Failed to get chunks from ChromaDB for doc {doc.get('id')}: {e}")
+        
+        # If no ChromaDB content available, extract from file
+        if not text_content and file_exists:
+            if document_processor and ENHANCED_PROCESSING_AVAILABLE:
+                try:
+                    # Use enhanced processor (same as upload process)
+                    text_content, extraction_metadata = document_processor.extract_text(file_path)
+                    logger.info(f"Text extracted using enhanced processor for doc {doc.get('id')}: {len(text_content)} characters")
+                except Exception as e:
+                    logger.warning(f"Enhanced extraction failed for preview, falling back to basic method: {e}")
+                    # Fallback to basic method
+                    if file_path.lower().endswith('.pdf'):
+                        with open(file_path, 'rb') as file:
+                            text_content = extract_text_from_pdf(file)
+                    elif file_path.lower().endswith('.txt'):
+                        with open(file_path, 'r', encoding='utf-8') as file:
+                            text_content = file.read()
+                    if text_content:
+                        logger.info(f"Fallback extraction for doc {doc.get('id')}: {len(text_content)} characters")
+            else:
+                # Fallback to original method when enhanced processing not available
+                if file_path.lower().endswith('.pdf'):
+                    logger.info(f"Attempting to extract text from PDF file: {file_path}")
+                    with open(file_path, 'rb') as file:
+                        text_content = extract_text_from_pdf(file)
+                        logger.info(f"Extracted original text from PDF file for doc {doc.get('id')}: {len(text_content)} characters")
+                elif file_path.lower().endswith('.txt'):
+                    logger.info(f"Reading text file: {file_path}")
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        text_content = file.read()
+                        logger.info(f"Read text from TXT file for doc {doc.get('id')}: {len(text_content)} characters")
+        
+        # Final fallback to ChromaDB chunks if still no content
+        if not text_content and CHROMA_ENABLED and chroma_service:
             try:
                 chunks = chroma_service.get_document_chunks(str(doc.get('id')))
                 if chunks:
                     text_content = '\n\n'.join(chunks)
-                    logger.info(f"Retrieved {len(chunks)} chunks from ChromaDB for doc {doc.get('id')}")
+                    logger.info(f"Retrieved {len(chunks)} chunks from ChromaDB for doc {doc.get('id')} (fallback)")
             except Exception as e:
                 logger.warning(f"Failed to get chunks from ChromaDB for doc {doc.get('id')}: {e}")
-        
-        # Fall back to extracting text from PDF file if no chunks found AND file exists
-        if not text_content and file_exists and file_path.lower().endswith('.pdf'):
-            with open(file_path, 'rb') as file:
-                # Extract text
-                text_content = extract_text_from_pdf(file)
-                logger.info(f"Extracted text from PDF file for doc {doc.get('id')}: {len(text_content)} characters")
         
         # If still no content and no file exists, return an error
         if not text_content and not file_exists:

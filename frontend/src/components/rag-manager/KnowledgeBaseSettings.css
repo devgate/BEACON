@@ -1163,12 +1163,7 @@
 }
 
 /* More chunks indicator */
-.more-chunks-indicator {
-  text-align: center;
-  padding: 24px 20px;
-  background: linear-gradient(to bottom, transparent, rgba(15, 23, 42, 0.8));
-  border-top: 1px solid rgba(71, 85, 105, 0.4);
-}
+
 
 .more-chunks-icon {
   font-size: 18px;
@@ -1718,11 +1713,7 @@
   }
   
   /* More Chunks Indicator Mobile */
-  .more-chunks-indicator {
-    margin: 12px 16px 16px;
-    padding: 12px;
-    font-size: 0.85rem;
-  }
+
   
   /* Empty State Mobile */
   .chunking-preview-empty {
@@ -1960,11 +1951,7 @@
     color: #9ca3af;
   }
   
-  .more-chunks-indicator {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
+
   
   .settings-summary {
     background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%);

@@ -575,7 +575,14 @@ const KnowledgeBaseSettings = ({
               }));
               
               setPreviewChunks(actualChunks);
-              setDocumentText(chunksData.chunks.join('\n\n--- 청크 구분 ---\n\n'));
+              
+              // Use reconstructed text from ChromaDB chunks instead of original text
+              // This ensures the chunking preview uses the SAME text that was actually chunked and stored
+              // IMPORTANT: Join without separators to avoid creating artificial sentence breaks
+              const reconstructedText = chunksData.chunks.join(' ');
+              setDocumentText(reconstructedText);
+              console.log(`Using reconstructed text from ${chunksData.chunks.length} ChromaDB chunks: ${reconstructedText.length} characters`);
+              console.log('This ensures chunking preview uses the exact same text that was actually processed during upload');
               
               console.log(`Loaded ${actualChunks.length} actual chunks from ChromaDB for ${documentId}`);
               return;

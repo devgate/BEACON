@@ -778,7 +778,7 @@ class ChromaService:
                             chunk_overlaps.append(chunk_overlap)
                         
                         # Collect chunking strategy information  
-                        strategy = meta.get('chunking_strategy')
+                        strategy = meta.get('chunk_strategy') or meta.get('chunking_strategy')
                         if strategy:
                             chunking_strategies.add(strategy)
                         
@@ -950,6 +950,52 @@ class DocumentChunker:
                 current_chunk = paragraph + "\n\n"
         
         if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+    
+    @staticmethod
+    def chunk_by_title(text: str, max_chunk_size: int = 512, overlap: int = 50) -> List[str]:
+        """
+        Split text into chunks based on title structure and character limits
+        
+        Args:
+            text: Input text
+            max_chunk_size: Maximum characters per chunk
+            overlap: Overlap between chunks in characters
+            
+        Returns:
+            List of text chunks
+        """
+        import re
+        
+        # Split by sentences first - same as frontend logic
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        chunks = []
+        current_chunk = ''
+        
+        for sentence in sentences:
+            # Calculate what the chunk would be if we add this sentence
+            test_chunk = current_chunk + (' ' if current_chunk else '') + sentence
+            
+            # If adding this sentence exceeds the limit and we have content, create a chunk
+            if len(test_chunk) > max_chunk_size and current_chunk:
+                chunks.append(current_chunk.strip())
+                
+                # Create overlap - take last part of current chunk
+                if overlap > 0:
+                    words = current_chunk.split()
+                    overlap_words = words[-min(overlap//5, len(words)):]
+                    current_chunk = ' '.join(overlap_words) + ' ' + sentence
+                else:
+                    current_chunk = sentence
+            else:
+                current_chunk = test_chunk
+        
+        # Add final chunk
+        if current_chunk.strip():
             chunks.append(current_chunk.strip())
         
         return chunks
