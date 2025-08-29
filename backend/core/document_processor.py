@@ -305,7 +305,7 @@ class DocumentProcessor:
                             lines.append(f"{indent}[{i}]:")
                             lines.extend(json_to_text(item, level + 1))
                         else:
-                            lines.append(f"{indent}[{i}]: {str(item)}")
+                            lines.append(f"{indent}[{i}]: {str(item)}") 
                 else:
                     lines.append(f"{indent}{str(obj)}")
                 

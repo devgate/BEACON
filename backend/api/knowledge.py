@@ -150,8 +150,7 @@ def get_knowledge_base_documents(index_id):
         # Filter documents by knowledge base ID
         kb_documents = [
             doc for doc in documents 
-            if str(doc.get('knowledge_base_id')) == str(index_id) or 
-               str(doc.get('category_id')) == str(index_id)
+            if str(doc.get('knowledge_base_id')) == str(index_id)
         ]
         
         return jsonify({
@@ -300,7 +299,6 @@ def upload_to_knowledge_base():
             'file_path': file_path,
             'file_size': file_size,
             'uploaded_at': datetime.now().isoformat(),
-            'category_id': None,
             'index_id': index_id,
             'status': 'Pending',
             'chunk_count': max(1, len(content) // 1000)  # Estimate chunks
@@ -449,7 +447,6 @@ def _process_with_rag_kb(content, filename, doc_info, index_id, file_path):
                 'title': filename,
                 'file_path': file_path,
                 'index_id': index_id,
-                'category_id': doc_info.get('category_id'),
                 'uploaded_at': doc_info.get('uploaded_at', datetime.now().isoformat())
             }
         )

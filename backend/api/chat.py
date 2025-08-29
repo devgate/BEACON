@@ -23,20 +23,13 @@ MOCK_RESPONSES = [
     "해당 문서에서 관련 정보를 찾아보겠습니다. 잠시만 기다려주세요... 네, 찾았습니다! 상세한 설명을 드리겠습니다."
 ]
 
-CATEGORY_RESPONSES = {
-    1: ["재무 문서를 분석한 결과입니다.", "재정 상태가 양호해 보입니다.", "회계 기준에 따르면 다음과 같습니다."],
-    2: ["맛집 정보를 확인했습니다.", "이 음식점의 특징은 다음과 같습니다.", "추천 메뉴와 가격 정보입니다."],
-    3: ["매뉴얼을 참고한 결과입니다.", "사용법은 다음 단계를 따라주세요.", "주의사항을 확인해주세요."],
-    4: ["문서 내용을 검토했습니다.", "관련 정보는 다음과 같습니다.", "추가 참고사항입니다."]
-}
-
 # Storage for chat history
 chat_history = []
 
 def init_chat_module(app_context):
     """Initialize chat module with app context"""
     global bedrock_service, vector_store, rag_engine, chroma_service
-    global documents, categories, generate_embeddings
+    global documents, generate_embeddings
     global RAG_ENABLED, CHROMA_ENABLED
     
     bedrock_service = app_context['bedrock_service']
@@ -44,7 +37,6 @@ def init_chat_module(app_context):
     rag_engine = app_context['rag_engine']
     chroma_service = app_context.get('chroma_service')
     documents = app_context['documents']
-    categories = app_context['categories']
     generate_embeddings = app_context['generate_embeddings']
     RAG_ENABLED = app_context['RAG_ENABLED']
     CHROMA_ENABLED = app_context['CHROMA_ENABLED']
@@ -58,7 +50,6 @@ def chat():
     logger.info("📞 Chat API 호출됨 - 요청 데이터 처리 시작")
     data = request.get_json()
     user_message = data.get('message', '')
-    selected_category_id = data.get('category_id', None)
     model_id = data.get('model_id', None)
     settings = data.get('settings', {})
     
@@ -81,29 +72,28 @@ def chat():
             if use_chroma_rag:
                 return _handle_chroma_rag(
                     user_message, model_id, temperature, max_tokens,
-                    knowledge_base_id, top_k_documents, selected_category_id
+                    knowledge_base_id, top_k_documents
                 )
             elif use_rag and documents:
                 return _handle_legacy_rag(
-                    user_message, selected_category_id, model_id,
+                    user_message, model_id,
                     top_k_documents, temperature, max_tokens
                 )
             else:
                 return _handle_general_conversation(
-                    user_message, model_id, temperature, max_tokens,
-                    selected_category_id
+                    user_message, model_id, temperature, max_tokens
                 )
         else:
             # RAG_ENABLED is False - fallback to mock responses
             logger.warning("❌ RAG_ENABLED가 False입니다 - Mock 응답 시스템 사용")
-            return _generate_mock_response(user_message, selected_category_id)
+            return _generate_mock_response(user_message)
             
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
-        return _generate_mock_response(user_message, selected_category_id, error=str(e))
+        return _generate_mock_response(user_message, error=str(e))
 
 def _handle_chroma_rag(user_message, model_id, temperature, max_tokens,
-                      knowledge_base_id, top_k_documents, selected_category_id):
+                      knowledge_base_id, top_k_documents):
     """Handle ChromaDB RAG system"""
     logger.info("=== RAG 질문 처리 시작 ===")
     logger.info("1. ✅ 질문 입력: %s", user_message[:50] + "..." if len(user_message) > 50 else user_message)
@@ -218,17 +208,16 @@ def _handle_chroma_rag(user_message, model_id, temperature, max_tokens,
         logger.warning(f"No relevant documents found in ChromaDB for query: {user_message[:50]}...")
         return _handle_no_documents_found(
             user_message, model_id, temperature, max_tokens,
-            selected_category_id, knowledge_base_id
+            knowledge_base_id
         )
 
-def _handle_legacy_rag(user_message, selected_category_id, model_id,
+def _handle_legacy_rag(user_message, model_id,
                        top_k_documents, temperature, max_tokens):
     """Handle legacy RAG system"""
     logger.info(f"Processing legacy RAG query: {user_message[:50]}... with model: {model_id}")
     
     response_data = rag_engine.query(
         query_text=user_message,
-        category_id=selected_category_id,
         model_id=model_id,
         top_k_documents=top_k_documents,
         temperature=temperature,
@@ -260,7 +249,6 @@ def _handle_legacy_rag(user_message, selected_category_id, model_id,
         'user_message': user_message,
         'ai_response': response_data.response,
         'model_used': response_data.model_used,
-        'category_id': selected_category_id,
         'tokens_used': response_data.tokens_used,
         'cost_estimate': response_data.cost_estimate,
         'confidence_score': response_data.confidence_score,
@@ -283,8 +271,7 @@ def _handle_legacy_rag(user_message, selected_category_id, model_id,
         'rag_enabled': True
     })
 
-def _handle_general_conversation(user_message, model_id, temperature, max_tokens,
-                                selected_category_id):
+def _handle_general_conversation(user_message, model_id, temperature, max_tokens):
     """Handle general conversation without RAG"""
     logger.info(f"Processing general conversation with Bedrock: {user_message[:50]}... with model: {model_id}")
     
@@ -316,7 +303,6 @@ def _handle_general_conversation(user_message, model_id, temperature, max_tokens
         'user_message': user_message,
         'ai_response': response_data['text'],
         'model_used': model_id,
-        'category_id': selected_category_id,
         'tokens_used': response_data.get('usage', {}),
         'cost_estimate': response_data.get('cost', {}),
         'confidence_score': 1.0,
@@ -340,7 +326,7 @@ def _handle_general_conversation(user_message, model_id, temperature, max_tokens
     })
 
 def _handle_no_documents_found(user_message, model_id, temperature, max_tokens,
-                              selected_category_id, knowledge_base_id):
+                              knowledge_base_id):
     """Handle case when no relevant documents are found"""
     logger.info(f"Falling back to general conversation with Bedrock: {user_message[:50]}...")
     
@@ -375,7 +361,6 @@ def _handle_no_documents_found(user_message, model_id, temperature, max_tokens,
         'user_message': user_message,
         'ai_response': response_data['text'],
         'model_used': model_id,
-        'category_id': selected_category_id,
         'knowledge_base_id': knowledge_base_id,
         'tokens_used': response_data.get('usage', {}),
         'cost_estimate': response_data.get('cost', {}),
@@ -421,7 +406,7 @@ def _get_default_text_model():
     else:
         raise Exception("No text generation models available")
 
-def _generate_mock_response(user_message: str, category_id: Optional[int] = None, error: str = None):
+def _generate_mock_response(user_message: str, error: str = None):
     """Generate mock response for fallback mode"""
     try:
         if error:
@@ -431,16 +416,9 @@ def _generate_mock_response(user_message: str, category_id: Optional[int] = None
         relevant_images = []
         
         search_documents = documents
-        if category_id:
-            search_documents = [doc for doc in documents if doc.get('category_id') == category_id]
-            logger.info(f"선택된 카테고리 {category_id}의 문서 {len(search_documents)}개를 검색 대상으로 설정")
         
         if len(search_documents) == 0:
-            if category_id:
-                category_name = next((cat['name'] for cat in categories if cat['id'] == category_id), '선택된 카테고리')
-                response = f"현재 '{category_name}' 카테고리에 업로드된 문서가 없습니다. 해당 카테고리에 PDF 파일을 먼저 업로드한 후 질문해주세요."
-            else:
-                response = "현재 업로드된 문서가 없습니다. PDF 파일을 먼저 업로드한 후 문서에 대해 질문해주세요."
+            response = "현재 업로드된 문서가 없습니다. PDF 파일을 먼저 업로드한 후 문서에 대해 질문해주세요."
         else:
             greeting_words = ['안녕', 'hello', 'hi', '반가워', '잘지내', '어떻게']
             simple_questions = ['뭐야', '뭔가', '어떻게', '왜', '언제', '어디서']
@@ -465,11 +443,7 @@ def _generate_mock_response(user_message: str, category_id: Optional[int] = None
             
             if relevant_docs:
                 doc_titles = [doc['title'] for doc in relevant_docs[:3]]
-                if category_id and category_id in CATEGORY_RESPONSES:
-                    category_response = random.choice(CATEGORY_RESPONSES[category_id])
-                    response = f"{category_response}\n\n참고 문서: {', '.join(doc_titles)}\n\n사용자 질문 '{user_message}'에 대한 상세한 답변을 드리겠습니다."
-                else:
-                    response = f"업로드하신 문서 '{', '.join(doc_titles)}'를 분석한 결과, '{user_message}'에 대한 관련 정보를 찾았습니다. {random.choice(MOCK_RESPONSES)}"
+                response = f"업로드하신 문서 '{', '.join(doc_titles)}'를 분석한 결과, '{user_message}'에 대한 관련 정보를 찾았습니다. {random.choice(MOCK_RESPONSES)}"
             else:
                 if is_greeting:
                     response = "안녕하세요! BEACON AI 어시스턴트입니다. 업로드하신 문서에 대해 궁금한 점이 있으시면 언제든 질문해주세요."

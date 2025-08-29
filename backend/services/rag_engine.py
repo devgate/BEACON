@@ -81,7 +81,6 @@ class RAGEngine:
                         document_id: str,
                         title: str, 
                         content: str, 
-                        category_id: int,
                         category_settings: Dict[str, Any]) -> ProcessedDocument:
         """
         Process a document: chunk, generate embeddings, and store
@@ -90,8 +89,7 @@ class RAGEngine:
             document_id: Unique document identifier
             title: Document title
             content: Document text content
-            category_id: Document category ID
-            category_settings: Category-specific processing settings
+            category_settings: Document processing settings
             
         Returns:
             ProcessedDocument with processing results
@@ -102,7 +100,7 @@ class RAGEngine:
         try:
             logger.info(f"Processing document {document_id} ({title})")
             
-            # Apply category-specific chunking
+            # Apply chunking
             chunks = self._chunk_document(
                 content=content,
                 strategy=category_settings.get('chunk_strategy', 'sentence'),
@@ -128,7 +126,6 @@ class RAGEngine:
                     chunk_index=i,
                     content=chunk_text,
                     embedding=embedding,
-                    category_id=category_id,
                     metadata={
                         'title': title,
                         'chunk_strategy': category_settings.get('chunk_strategy', 'sentence'),
@@ -165,7 +162,6 @@ class RAGEngine:
     
     def query(self, 
               query_text: str,
-              category_id: Optional[int] = None,
               model_id: Optional[str] = None,
               top_k_documents: int = 5,
               temperature: float = 0.7,
@@ -176,7 +172,6 @@ class RAGEngine:
         
         Args:
             query_text: User query
-            category_id: Optional category filter
             model_id: Optional model override
             top_k_documents: Number of relevant documents to retrieve
             temperature: Generation temperature
@@ -204,7 +199,6 @@ class RAGEngine:
             # Search for relevant documents
             search_results = self.vector_store.search_similar(
                 query_embedding=query_embedding[0],
-                category_id=category_id,
                 top_k=top_k_documents,
                 similarity_threshold=0.1
             )
@@ -218,7 +212,6 @@ class RAGEngine:
                 model_id=model_id,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                category_id=category_id
             )
             
             # Calculate confidence score based on source relevance
@@ -283,7 +276,6 @@ class RAGEngine:
                 "total_chunks": len(chunks),
                 "embedding_model": first_chunk.metadata.get('embedding_model', 'unknown'),
                 "chunk_strategy": first_chunk.metadata.get('chunk_strategy', 'unknown'),
-                "category_id": first_chunk.category_id,
                 "total_words": sum(chunk.metadata.get('word_count', 0) for chunk in chunks),
                 "total_characters": sum(chunk.metadata.get('char_count', 0) for chunk in chunks)
             }
@@ -426,7 +418,7 @@ class RAGEngine:
                                        model_id: str,
                                        temperature: float,
                                        max_tokens: int,
-                                       category_id: Optional[int] = None) -> Dict[str, Any]:
+) -> Dict[str, Any]:
         """
         Generate response using retrieved context
         
@@ -436,7 +428,6 @@ class RAGEngine:
             model_id: Model to use for generation
             temperature: Generation temperature
             max_tokens: Maximum tokens
-            category_id: Optional category for specialized prompts
             
         Returns:
             Response data from Bedrock
@@ -453,8 +444,8 @@ class RAGEngine:
             
             context_text = "\n---\n".join(context_parts)
             
-            # Create category-specific system prompt
-            system_prompt = self._get_system_prompt(category_id)
+            # Create system prompt
+            system_prompt = self._get_system_prompt()
             
             # Create the prompt
             if context_text.strip():
@@ -486,29 +477,14 @@ Please upload relevant PDF documents first, and then I can provide detailed answ
             logger.error(f"Error generating response: {e}")
             raise
     
-    def _get_system_prompt(self, category_id: Optional[int] = None) -> str:
+    def _get_system_prompt(self) -> str:
         """
-        Get category-specific system prompt
+        Get system prompt
         
-        Args:
-            category_id: Category identifier
-            
         Returns:
             System prompt string
         """
-        base_prompt = """You are BEACON AI, an intelligent document analysis assistant. You provide accurate, helpful responses based on uploaded documents."""
-        
-        category_prompts = {
-            1: f"{base_prompt} You specialize in financial document analysis. Focus on financial metrics, trends, and implications when analyzing financial documents.",
-            
-            2: f"{base_prompt} You specialize in restaurant and food service information. Focus on menu items, pricing, location details, and customer experience aspects.",
-            
-            3: f"{base_prompt} You specialize in technical manuals and instructional content. Focus on step-by-step procedures, safety guidelines, and troubleshooting information.",
-            
-            4: f"{base_prompt} You provide general document analysis across various domains. Adapt your analysis style to the document type and content."
-        }
-        
-        return category_prompts.get(category_id, base_prompt)
+        return """You are BEACON AI, an intelligent document analysis assistant. You provide accurate, helpful responses based on uploaded documents."""
     
     def _calculate_confidence_score(self, search_results: List[SearchResult]) -> float:
         """
@@ -654,7 +630,6 @@ if __name__ == "__main__":
             document_id="rag_test_doc",
             title="RAG Test Document",
             content=test_content,
-            category_id=4,
             category_settings={
                 'chunk_strategy': 'sentence',
                 'chunk_size': 100,
@@ -668,7 +643,6 @@ if __name__ == "__main__":
         print("Testing query...")
         response = rag_engine.query(
             query_text="What is this document about?",
-            category_id=4,
             top_k_documents=3
         )
         

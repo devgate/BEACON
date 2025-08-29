@@ -34,7 +34,6 @@ except ImportError as e:
 from api.misc import misc_bp
 from api.chat import chat_bp, init_chat_module
 from api.documents import documents_bp, init_documents_module, documents
-from api.categories import categories_bp, init_categories_module, categories
 from api.knowledge import knowledge_bp, init_knowledge_module
 from api.bedrock import bedrock_bp, init_bedrock_module
 from api.chroma import chroma_bp, init_chroma_module
@@ -134,7 +133,6 @@ def initialize_services():
     
     # Add shared data structures
     context['documents'] = documents
-    context['categories'] = categories
     
     return context
 
@@ -171,7 +169,7 @@ def generate_embeddings(texts, batch_size=10):
             batch_embeddings = []
             
             for text in batch:
-                # Truncate text if too long
+                # Truncate text if too long 
                 if len(text) > 8000:
                     text = text[:8000]
                 
@@ -201,7 +199,6 @@ def register_blueprints(app, app_context):
     # Initialize modules with app context
     init_chat_module(app_context)
     init_documents_module(app_context)
-    init_categories_module(app_context)
     init_knowledge_module(app_context)
     init_bedrock_module(app_context)
     init_chroma_module(app_context)
@@ -210,7 +207,6 @@ def register_blueprints(app, app_context):
     app.register_blueprint(misc_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(documents_bp)
-    app.register_blueprint(categories_bp)
     app.register_blueprint(knowledge_bp)
     app.register_blueprint(bedrock_bp)
     app.register_blueprint(chroma_bp)

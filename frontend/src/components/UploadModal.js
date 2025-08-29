@@ -2,8 +2,7 @@ import React, { useState, useRef } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCloudUploadAlt, faTimes } from '@fortawesome/free-solid-svg-icons';
 
-const UploadModal = ({ categories, onUpload, onClose }) => {
-  const [selectedCategoryId, setSelectedCategoryId] = useState('4');
+const UploadModal = ({ onUpload, onClose }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -53,7 +52,7 @@ const UploadModal = ({ categories, onUpload, onClose }) => {
     }, 100);
 
     try {
-      await onUpload(file, selectedCategoryId);
+      await onUpload(file);
       clearInterval(progressInterval);
       setUploadProgress(100);
       setUploadStatus('업로드 완료!');
@@ -79,21 +78,6 @@ const UploadModal = ({ categories, onUpload, onClose }) => {
           </button>
         </div>
         
-        <div className="category-selection">
-          <label htmlFor="categorySelect">카테고리 선택:</label>
-          <select 
-            id="categorySelect"
-            className="category-select"
-            value={selectedCategoryId}
-            onChange={(e) => setSelectedCategoryId(e.target.value)}
-          >
-            {categories.map(category => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </div>
         
         <div 
           className={`upload-zone ${isDragging ? 'dragover' : ''}`}

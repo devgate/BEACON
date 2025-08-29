@@ -228,12 +228,6 @@ const DocumentPreview = ({
                     </td>
                   </tr>
                 )}
-                {previewData.metadata.category_id && (
-                  <tr>
-                    <td className="meta-label">카테고리</td>
-                    <td className="meta-value">Category {previewData.metadata.category_id}</td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>

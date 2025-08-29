@@ -27,7 +27,6 @@ class DocumentChunk:
     content: str
     embedding: List[float]
     metadata: Dict[str, Any]
-    category_id: Optional[int] = None
 
 
 @dataclass
@@ -38,7 +37,6 @@ class SearchResult:
     content: str
     similarity_score: float
     metadata: Dict[str, Any]
-    category_id: Optional[int] = None
 
 
 class VectorStore:
@@ -96,7 +94,6 @@ class VectorStore:
                         'chunk_index': chunk.chunk_index,
                         'content': chunk.content,
                         'embedding': embedding,
-                        'category_id': chunk.category_id or 0,
                         'metadata': self._convert_to_dynamodb_format(chunk.metadata),
                         'created_at': int(time.time()),
                         'embedding_model': chunk.metadata.get('embedding_model', 'amazon.titan-embed-text-v1')
@@ -115,7 +112,6 @@ class VectorStore:
     
     def search_similar(self, 
                       query_embedding: np.ndarray,
-                      category_id: Optional[int] = None,
                       top_k: int = 5,
                       similarity_threshold: float = 0.0) -> List[SearchResult]:
         """
@@ -123,7 +119,6 @@ class VectorStore:
         
         Args:
             query_embedding: Query embedding vector
-            category_id: Optional category filter
             top_k: Number of results to return
             similarity_threshold: Minimum similarity score
             
@@ -134,13 +129,8 @@ class VectorStore:
             # Convert query embedding to list
             query_vector = query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding
             
-            # Scan table with optional category filter
-            if category_id is not None:
-                response = self.table.scan(
-                    FilterExpression=Attr('category_id').eq(category_id)
-                )
-            else:
-                response = self.table.scan()
+            # Scan table
+            response = self.table.scan()
             
             results = []
             
@@ -166,7 +156,6 @@ class VectorStore:
                         content=item.get('content', ''),
                         similarity_score=float(similarity),
                         metadata=self._convert_from_dynamodb_format(item.get('metadata', {})),
-                        category_id=item.get('category_id')
                     )
                     
                     results.append(result)
@@ -210,8 +199,7 @@ class VectorStore:
                     chunk_index=item.get('chunk_index', 0),
                     content=item.get('content', ''),
                     similarity_score=1.0,  # Not applicable for direct retrieval
-                    metadata=self._convert_from_dynamodb_format(item.get('metadata', {})),
-                    category_id=item.get('category_id')
+                    metadata=self._convert_from_dynamodb_format(item.get('metadata', {}))
                 )
                 results.append(result)
             
@@ -257,38 +245,6 @@ class VectorStore:
             logger.error(f"Error deleting document chunks: {e}")
             raise
     
-    def get_category_stats(self, category_id: int) -> Dict[str, Any]:
-        """
-        Get statistics for a specific category
-        
-        Args:
-            category_id: Category identifier
-            
-        Returns:
-            Dictionary with category statistics
-        """
-        try:
-            response = self.table.scan(
-                FilterExpression=Attr('category_id').eq(category_id)
-            )
-            
-            items = response.get('Items', [])
-            
-            # Get unique documents in category
-            unique_documents = set(item.get('base_document_id') for item in items)
-            
-            stats = {
-                'category_id': category_id,
-                'total_chunks': len(items),
-                'unique_documents': len(unique_documents),
-                'avg_chunks_per_document': len(items) / len(unique_documents) if unique_documents else 0
-            }
-            
-            return stats
-            
-        except ClientError as e:
-            logger.error(f"Error getting category stats: {e}")
-            return {'category_id': category_id, 'error': str(e)}
     
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """
@@ -455,8 +411,7 @@ if __name__ == "__main__":
                 "title": "Test Document",
                 "source": "unit_test",
                 "chunk_size": 50
-            },
-            category_id=1
+            }
         )
         
         # Add test chunk

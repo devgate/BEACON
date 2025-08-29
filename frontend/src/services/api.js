@@ -14,7 +14,7 @@ const api = axios.create({
 });
 
 export const chatService = {
-  async sendMessage(message, categoryId = null, modelId = null, settings = {}) {
+  async sendMessage(message, modelId = null, settings = {}) {
     const data = { 
       message,
       settings: {
@@ -25,18 +25,10 @@ export const chatService = {
         ...settings
       }
     };
-    if (categoryId) {
-      data.category_id = categoryId;
-    }
     if (modelId) {
       data.model_id = modelId;
     }
     const response = await api.post('/chat', data);
-    return response.data;
-  },
-
-  async getCategories() {
-    const response = await api.get('/categories');
     return response.data;
   }
 };
@@ -77,22 +69,17 @@ export const documentService = {
     return response.data;
   },
 
-  async getDocumentsByCategory(categoryId) {
-    const response = await api.get(`/categories/${categoryId}/documents`);
-    return response.data;
-  },
 
   async getDocumentsByIndex(indexId) {
     const response = await api.get(`/knowledge/${indexId}/documents`);
     return response.data;
   },
 
-  async uploadDocument(file, indexId = null, categoryId = null, metadata = {}) {
+  async uploadDocument(file, indexId = null, metadata = {}) {
     const formData = new FormData();
     formData.append('file', file);
     
     if (indexId) formData.append('index_id', indexId);
-    if (categoryId) formData.append('category_id', categoryId);
     
     // Add metadata
     Object.keys(metadata).forEach(key => {
@@ -165,15 +152,6 @@ export const documentService = {
     return response.data;
   },
 
-  async getCategories() {
-    const response = await api.get('/categories');
-    return response.data;
-  },
-
-  async updateCategorySettings(categoryId, settings) {
-    const response = await api.put(`/categories/${categoryId}/settings`, settings);
-    return response.data;
-  },
 
   async getEmbeddingModels() {
     const response = await api.get('/embedding-models');

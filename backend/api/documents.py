@@ -28,7 +28,7 @@ def init_documents_module(app_context):
     """Initialize documents module with app context"""
     global bedrock_service, vector_store, rag_engine
     global document_processor, chroma_service, DocumentChunker
-    global categories, generate_embeddings
+    global generate_embeddings
     global RAG_ENABLED, CHROMA_ENABLED, ENHANCED_PROCESSING_AVAILABLE
     global app_config
     
@@ -38,7 +38,6 @@ def init_documents_module(app_context):
     document_processor = app_context.get('document_processor')
     chroma_service = app_context.get('chroma_service')
     DocumentChunker = app_context.get('DocumentChunker')
-    categories = app_context['categories']
     generate_embeddings = app_context['generate_embeddings']
     RAG_ENABLED = app_context['RAG_ENABLED']
     CHROMA_ENABLED = app_context['CHROMA_ENABLED']
@@ -131,7 +130,6 @@ def sync_documents_from_chroma():
                         'content': '',  # Will be loaded from file when needed
                         'file_path': f"uploads/{doc_data.get('document_name', 'unknown.pdf')}",
                         'uploaded_at': doc_data.get('created_at', datetime.now().isoformat()),
-                        'category_id': None,
                         'index_id': index_id,
                         'knowledge_base_id': index_id,  # Add for consistency
                         'status': 'Success',
@@ -191,7 +189,6 @@ def upload_file():
         return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
     
     # Get parameters
-    category_id = int(request.form.get('category_id', 4))
     chunk_strategy = request.form.get('chunk_strategy', 'sentence')
     chunk_size = int(request.form.get('chunk_size', 1000))
     chunk_overlap = int(request.form.get('chunk_overlap', 100))
@@ -248,7 +245,6 @@ def upload_file():
                 'images': images,
                 'file_path': file_path,
                 'original_filename': file.filename,
-                'category_id': category_id,
                 'index_id': index_id,  # Add knowledge base ID
                 'knowledge_base_id': index_id,  # Also add as knowledge_base_id for consistency
                 'extraction_metadata': extraction_metadata,
@@ -264,7 +260,7 @@ def upload_file():
                 chroma_processing_result = _process_with_chroma(
                     text_content, filename, document_counter,
                     chunk_strategy, chunk_size, chunk_overlap,
-                    category_id, extraction_metadata, file.filename, index_id
+                    extraction_metadata, file.filename, index_id
                 )
                 if chroma_processing_result and chroma_processing_result['success']:
                     new_doc['chunk_count'] = chroma_processing_result['chunks_created']
@@ -273,16 +269,12 @@ def upload_file():
             legacy_rag_result = None
             if RAG_ENABLED and rag_engine:
                 try:
-                    category_settings = next(
-                        (cat.get('settings', {}) for cat in categories if cat['id'] == category_id),
-                        {'chunk_strategy': chunk_strategy, 'chunk_size': chunk_size, 'chunk_overlap': chunk_overlap}
-                    )
+                    category_settings = {'chunk_strategy': chunk_strategy, 'chunk_size': chunk_size, 'chunk_overlap': chunk_overlap}
                     
                     legacy_rag_result = rag_engine.process_document(
                         document_id=str(document_counter),
                         title=filename,
                         content=text_content,
-                        category_id=category_id,
                         category_settings=category_settings
                     )
                     logger.info(f"Legacy RAG processing completed")
@@ -339,7 +331,7 @@ def upload_file():
     return jsonify({'error': f'지원되지 않는 파일 형식입니다. 지원 형식: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
 
 def _process_with_chroma(text_content, filename, doc_id, chunk_strategy, 
-                         chunk_size, chunk_overlap, category_id, 
+                         chunk_size, chunk_overlap, 
                          extraction_metadata, original_filename, index_id=None):
     """Process document with ChromaDB"""
     try:
@@ -390,7 +382,6 @@ def _process_with_chroma(text_content, filename, doc_id, chunk_strategy,
                 document_name=filename,
                 index_id=index_id,
                 metadata={
-                    'category_id': category_id,
                     'chunk_strategy': chunk_strategy,
                     'chunk_size': chunk_size,
                     'file_extension': extraction_metadata.get('file_extension', ''),
@@ -406,7 +397,6 @@ def _process_with_chroma(text_content, filename, doc_id, chunk_strategy,
                 document_id=document_id,
                 document_name=filename,
                 metadata={
-                    'category_id': category_id,
                     'chunk_strategy': chunk_strategy,
                     'chunk_size': chunk_size,
                     'file_extension': extraction_metadata.get('file_extension', ''),
@@ -721,7 +711,6 @@ def get_document_preview(doc_id):
                 'file_name': doc.get('title', 'Unknown'),
                 'file_size': os.path.getsize(file_path) if os.path.exists(file_path) else 0,
                 'created_at': doc.get('created_at', datetime.now().isoformat()),
-                'category_id': doc.get('category_id'),
                 'status': doc.get('status', 'Unknown')
             }
         }

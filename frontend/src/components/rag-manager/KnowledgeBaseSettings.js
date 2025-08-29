@@ -279,7 +279,7 @@ const KnowledgeBaseSettings = ({
         
         // Filter documents by knowledge_base_id if selectedIndexId is present
         const filteredDocs = selectedIndexId 
-          ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId || doc.category_id == selectedIndexId)
+          ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId)
           : documents;
         
         const readyDocuments = filteredDocs.filter(doc => {
@@ -301,7 +301,7 @@ const KnowledgeBaseSettings = ({
       
       // Filter documents by knowledge_base_id if selectedIndexId is present
       const filteredDocs = selectedIndexId 
-        ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId || doc.category_id == selectedIndexId)
+        ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId)
         : documents;
       
       // Filter for ready documents only - support multiple status values or no status
