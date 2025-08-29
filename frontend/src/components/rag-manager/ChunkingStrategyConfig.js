@@ -72,11 +72,11 @@ const ChunkingStrategyConfig = ({
           <div className="chunking-params">
             <div className="param-group">
               <label>
-                청크 크기 (토큰)
+                청크 크기 (문자)
                 <FontAwesomeIcon 
                   icon={faInfoCircle} 
                   className="info-icon"
-                  title="각 청크의 최대 토큰 수"
+                  title="각 청크의 최대 문자 수"
                 />
               </label>
               <div className="param-input-group">
@@ -105,11 +105,11 @@ const ChunkingStrategyConfig = ({
 
             <div className="param-group">
               <label>
-                오버랩 크기 (토큰)
+                오버랩 크기 (문자)
                 <FontAwesomeIcon 
                   icon={faInfoCircle} 
                   className="info-icon"
-                  title="인접 청크 간 중첩되는 토큰 수"
+                  title="인접 청크 간 중첩되는 문자 수"
                 />
               </label>
               <div className="param-input-group">

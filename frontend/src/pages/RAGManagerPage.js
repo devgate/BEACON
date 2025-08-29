@@ -97,6 +97,7 @@ const RAGManagerPage = () => {
             selectedIndexId={ragManager.selectedIndexId}
             selectedIndex={ragManager.selectedIndex?.name}
             onSettingsChange={ragHandlers.handleKBSettingsChange}
+            onChunkingSettingsChange={ragManager.handleChunkingSettingsChange}
             setNotification={ragManager.setNotification}
           />
         );

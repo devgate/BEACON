@@ -41,7 +41,8 @@ export const useRAGManager = () => {
     skipInferTableTypes: '선택해 주세요',
     chunkingStrategy: 'by_title',
     chunkingMode: 'elements',
-    maxCharacters: 4096,
+    maxCharacters: 512,  // Changed from 4096 to 512 (backend default)
+    overlap: 50,         // Added overlap field with backend default
     newAfterNChars: 4000,
     combineTextUnderNChars: 2000,
     languages: 'kor+eng',
@@ -423,6 +424,16 @@ export const useRAGManager = () => {
     }
   };
 
+  // Chunking settings synchronization callback
+  const handleChunkingSettingsChange = (settings) => {
+    console.log('Syncing chunking settings to kbSettings:', settings);
+    setKbSettings(prev => ({
+      ...prev,
+      maxCharacters: settings.maxCharacters,
+      overlap: settings.overlap
+    }));
+  };
+
   return {
     // State
     documents,
@@ -492,6 +503,7 @@ export const useRAGManager = () => {
     syncDocumentsFromChroma,
     updateDocumentStats,
     validateFile,
-    handleFileUpload
+    handleFileUpload,
+    handleChunkingSettingsChange
   };
 };

@@ -25,7 +25,8 @@ const KnowledgeBaseSettings = ({
   selectedIndexId,
   selectedIndex,
   onSettingsChange,
-  setNotification
+  setNotification,
+  onChunkingSettingsChange
 }) => {
   // State for embedding models from API
   const [embeddingModels, setEmbeddingModels] = useState([]);
@@ -54,9 +55,44 @@ const KnowledgeBaseSettings = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Initialize settings with backend defaults used in document upload
+  const initializeDefaultSettings = () => {
+    // These defaults match the backend RAG engine defaults
+    const BACKEND_DEFAULTS = {
+      chunk_size: 512,           // From rag_engine.py: category_settings.get('chunk_size', 512)
+      chunk_overlap: 50,         // From rag_engine.py: category_settings.get('chunk_overlap', 50)
+      embedding_model: 'amazon.titan-embed-text-v1', // From rag_engine.py: embedding_model default
+      chunking_strategy: 'sentence' // First strategy in chunkingStrategies array
+    };
+
+    // Set chunking strategy to sentence-based (matching backend default)
+    const sentenceStrategy = chunkingStrategies.find(s => s.id === BACKEND_DEFAULTS.chunking_strategy) 
+                             || chunkingStrategies[0];
+    
+    setChunkingStrategy(sentenceStrategy);
+    setChunkSize(BACKEND_DEFAULTS.chunk_size);
+    setChunkOverlap(BACKEND_DEFAULTS.chunk_overlap);
+    
+    console.log('Initialized UI with backend defaults:', {
+      chunk_size: BACKEND_DEFAULTS.chunk_size,
+      chunk_overlap: BACKEND_DEFAULTS.chunk_overlap,
+      embedding_model: BACKEND_DEFAULTS.embedding_model,
+      chunking_strategy: sentenceStrategy.name
+    });
+    
+    // Sync with kbSettings through callback
+    if (onChunkingSettingsChange) {
+      onChunkingSettingsChange({
+        maxCharacters: BACKEND_DEFAULTS.chunk_size,
+        overlap: BACKEND_DEFAULTS.chunk_overlap
+      });
+    }
+  };
+
   // Fetch embedding models and collection metadata from APIs
   useEffect(() => {
     fetchEmbeddingModels();
+    initializeDefaultSettings(); // Initialize with backend defaults
     if (selectedIndexId) {
       fetchAvailableDocuments();
       loadCollectionMetadata();
@@ -78,6 +114,30 @@ const KnowledgeBaseSettings = ({
     }
   }, [selectedIndexId]);
 
+  // Update embedding model when models are loaded
+  useEffect(() => {
+    if (embeddingModels.length > 0 && !embeddingModel) {
+      // If we have collection metadata, use that
+      if (collectionMetadata && collectionMetadata.metadata?.embedding_model_id) {
+        const storedModelId = collectionMetadata.metadata.embedding_model_id;
+        const storedModel = embeddingModels.find(m => m.id === storedModelId);
+        if (storedModel) {
+          setEmbeddingModel(storedModel);
+          console.log('Set embedding model from collection metadata (delayed):', storedModel.name);
+          return;
+        }
+      }
+      
+      // Otherwise use backend default
+      const backendDefaultModel = embeddingModels.find(m => m.id === 'amazon.titan-embed-text-v1') 
+                                 || embeddingModels.find(m => m.recommended) 
+                                 || embeddingModels[0];
+      if (backendDefaultModel) {
+        setEmbeddingModel(backendDefaultModel);
+        console.log('Set backend default embedding model (delayed):', backendDefaultModel.name);
+      }
+    }
+  }, [embeddingModels, collectionMetadata, embeddingModel]);
 
   const fetchEmbeddingModels = async () => {
     setLoadingModels(true);
@@ -107,6 +167,15 @@ const KnowledgeBaseSettings = ({
         });
         
         setEmbeddingModels(formattedModels);
+        
+        // Set default embedding model to match backend default
+        const backendDefaultModel = formattedModels.find(m => m.id === 'amazon.titan-embed-text-v1') 
+                                   || formattedModels.find(m => m.recommended) 
+                                   || formattedModels[0];
+        if (backendDefaultModel && !embeddingModel) {
+          setEmbeddingModel(backendDefaultModel);
+          console.log('Set default embedding model:', backendDefaultModel.name);
+        }
         
         setNotification({
           message: `AWS Bedrock에서 ${formattedModels.length}개 임베딩 모델을 성공적으로 로드했습니다`,
@@ -170,20 +239,16 @@ const KnowledgeBaseSettings = ({
         if (response.stats.metadata) {
           loadSettingsFromCollectionMetadata(response.stats.metadata);
         } else {
-          // Set default to sentence-based strategy (first in array)
-          setChunkingStrategy(chunkingStrategies[0]); // Sentence-based is now first
-          setChunkSize(chunkingStrategies[0].defaultSize);
-          setChunkOverlap(chunkingStrategies[0].defaultOverlap);
+          // If no metadata exists, keep the backend defaults already initialized
+          console.log('No collection metadata found, keeping backend defaults');
         }
       }
     } catch (error) {
       console.error('Failed to load collection metadata:', error);
       setCollectionMetadata(null);
       setCurrentChunkCount(0);
-      // Still set default to sentence-based even on error
-      setChunkingStrategy(chunkingStrategies[0]);
-      setChunkSize(chunkingStrategies[0].defaultSize);
-      setChunkOverlap(chunkingStrategies[0].defaultOverlap);
+      // Keep the backend defaults already initialized on error
+      console.log('Error loading collection metadata, keeping backend defaults');
     } finally {
       setLoadingMetadata(false);
     }
@@ -193,10 +258,11 @@ const KnowledgeBaseSettings = ({
   const loadSettingsFromCollectionMetadata = (metadata) => {
     console.log('Loading settings from collection metadata:', metadata);
     
-    // Load current chunk size from collection if available
+    // Load current settings from collection if available
     const loadedChunkSize = metadata.chunk_size || 512;
     const loadedChunkOverlap = metadata.chunk_overlap || 50;
     const loadedStrategyId = metadata.chunking_strategy || 'sentence';
+    const loadedEmbeddingModelId = metadata.embedding_model_id || 'amazon.titan-embed-text-v1';
     
     // Find the strategy based on what's actually stored in ChromaDB
     let strategy = chunkingStrategies.find(s => s.id === loadedStrategyId);
@@ -236,6 +302,13 @@ const KnowledgeBaseSettings = ({
     setChunkOverlap(loadedChunkOverlap);
     setChunkingStrategy(strategy);
     
+    // Set embedding model based on stored metadata
+    const storedEmbeddingModel = embeddingModels.find(m => m.id === loadedEmbeddingModelId);
+    if (storedEmbeddingModel) {
+      setEmbeddingModel(storedEmbeddingModel);
+      console.log('Set embedding model from metadata:', storedEmbeddingModel.name);
+    }
+    
     // Don't set hasChanges since we're loading current settings
     setHasChanges(false);
     
@@ -246,8 +319,17 @@ const KnowledgeBaseSettings = ({
       applied_strategy: strategy.id,
       strategy_name: strategy.name,
       strategy_range: strategy.sizeRange,
+      embedding_model: loadedEmbeddingModelId,
       total_tokens: metadata.total_tokens
     });
+    
+    // Sync with kbSettings through callback
+    if (onChunkingSettingsChange) {
+      onChunkingSettingsChange({
+        maxCharacters: loadedChunkSize,
+        overlap: loadedChunkOverlap
+      });
+    }
   };
 
 
@@ -414,7 +496,7 @@ const KnowledgeBaseSettings = ({
       const strategy = chunkingStrategy || chunkingStrategies[0];
       if (strategy) {
         const chunks = generatePreviewChunks(documentText, strategy, chunkSize, chunkOverlap);
-        setPreviewChunks(chunks.slice(0, 10));
+        setPreviewChunks(chunks);
         if (!chunkingStrategy) {
           setChunkingStrategy(strategy);
           setChunkSize(strategy.defaultSize);
@@ -451,7 +533,7 @@ const KnowledgeBaseSettings = ({
 
     try {
       const chunks = generatePreviewChunks(text, strategy, size, overlap);
-      setPreviewChunks(chunks.slice(0, 10));
+      setPreviewChunks(chunks);
     } catch (error) {
       console.error('Error generating preview chunks:', error);
       setPreviewChunks([]);
@@ -578,13 +660,12 @@ const KnowledgeBaseSettings = ({
     if (selectedIndexId) {
       loadSettings();
     } else {
-      // Reset to defaults when no KB selected - use fixed-size strategy
+      // Reset to backend defaults when no KB selected
       setEmbeddingModel(null);
-      const fixedSizeStrategy = chunkingStrategies.find(s => s.id === 'fixed') || chunkingStrategies[0];
-      setChunkingStrategy(fixedSizeStrategy);
-      setChunkSize(fixedSizeStrategy.defaultSize);
-      setChunkOverlap(fixedSizeStrategy.defaultOverlap);
-      setNormalize(true);
+      setCollectionMetadata(null);
+      setCurrentChunkCount(0);
+      // Keep the backend defaults that were initialized
+      console.log('No KB selected, keeping backend defaults');
       setHasChanges(false);
     }
   }, [selectedIndexId]);
@@ -611,15 +692,13 @@ const KnowledgeBaseSettings = ({
       setChunkOverlap(settings.chunkOverlap || 50);
       setNormalize(settings.normalize !== false);
     } else {
-      // Set defaults for new knowledge base - use sentence-based strategy
+      // Set defaults for new knowledge base - keep backend defaults already initialized
       const recommendedModel = embeddingModels.find(m => m.recommended) || embeddingModels[0];
-      setEmbeddingModel(recommendedModel);
-      
-      const sentenceStrategy = chunkingStrategies.find(s => s.id === 'sentence') || chunkingStrategies[0];
-      setChunkingStrategy(sentenceStrategy);
-      setChunkSize(sentenceStrategy.defaultSize);
-      setChunkOverlap(sentenceStrategy.defaultOverlap);
-      setNormalize(true);
+      if (recommendedModel && !embeddingModel) {
+        setEmbeddingModel(recommendedModel);
+      }
+      // Keep existing chunking settings (backend defaults)
+      console.log('New KB - keeping initialized backend defaults');
     }
     
     setHasChanges(false);
@@ -656,16 +735,50 @@ const KnowledgeBaseSettings = ({
     const strategy = chunkingStrategies.find(s => s.id === strategyId);
     if (strategy) {
       setChunkingStrategy(strategy);
-      // Update size and overlap to strategy defaults
-      setChunkSize(strategy.defaultSize);
-      setChunkOverlap(strategy.defaultOverlap);
+      
+      // Only update chunk size and overlap if they're outside the new strategy's valid range
+      const currentChunkSize = chunkSize;
+      const currentChunkOverlap = chunkOverlap;
+      
+      let newChunkSize = currentChunkSize;
+      let newChunkOverlap = currentChunkOverlap;
+      
+      // Adjust chunk size if it's outside the new strategy's range
+      if (currentChunkSize < strategy.sizeRange.min || currentChunkSize > strategy.sizeRange.max) {
+        newChunkSize = strategy.defaultSize;
+        console.log(`Chunk size ${currentChunkSize} outside range [${strategy.sizeRange.min}-${strategy.sizeRange.max}], using default: ${strategy.defaultSize}`);
+      }
+      
+      // Adjust overlap if it's too large for the new chunk size
+      if (currentChunkOverlap > Math.floor(newChunkSize * 0.5)) {
+        newChunkOverlap = strategy.defaultOverlap;
+        console.log(`Overlap ${currentChunkOverlap} too large for chunk size ${newChunkSize}, using default: ${strategy.defaultOverlap}`);
+      }
+      
+      // Only update if values actually changed
+      if (newChunkSize !== currentChunkSize) {
+        setChunkSize(newChunkSize);
+      }
+      if (newChunkOverlap !== currentChunkOverlap) {
+        setChunkOverlap(newChunkOverlap);
+      }
+      
       setHasChanges(true);
+      
+      // Sync with kbSettings through callback
+      if (onChunkingSettingsChange) {
+        onChunkingSettingsChange({
+          maxCharacters: newChunkSize,
+          overlap: newChunkOverlap
+        });
+      }
       
       console.log('Strategy changed:', {
         id: strategy.id,
         name: strategy.name,
-        defaultSize: strategy.defaultSize,
-        defaultOverlap: strategy.defaultOverlap
+        chunkSize: newChunkSize,
+        chunkOverlap: newChunkOverlap,
+        preservedCurrentValues: newChunkSize === currentChunkSize && newChunkOverlap === currentChunkOverlap
       });
     }
   };
@@ -681,6 +794,14 @@ const KnowledgeBaseSettings = ({
       console.log('Chunk size changing from', chunkSize, 'to', clampedValue);
       setChunkSize(clampedValue);
       setHasChanges(true);
+      
+      // Sync with kbSettings through callback
+      if (onChunkingSettingsChange) {
+        onChunkingSettingsChange({
+          maxCharacters: clampedValue,
+          overlap: chunkOverlap
+        });
+      }
       
       if (documentText && chunkingStrategy) {
         setTimeout(() => {
@@ -700,6 +821,14 @@ const KnowledgeBaseSettings = ({
     console.log('Chunk overlap changing from', chunkOverlap, 'to', clampedValue);
     setChunkOverlap(clampedValue);
     setHasChanges(true);
+    
+    // Sync with kbSettings through callback
+    if (onChunkingSettingsChange) {
+      onChunkingSettingsChange({
+        maxCharacters: chunkSize,
+        overlap: clampedValue
+      });
+    }
     
     if (documentText && chunkingStrategy) {
       setTimeout(() => {
@@ -765,11 +894,11 @@ const KnowledgeBaseSettings = ({
         setEmbeddingModel(recommendedModel);
       }
       
-      // Reset to sentence-based strategy (default)
+      // Reset to backend defaults
       const sentenceStrategy = chunkingStrategies.find(s => s.id === 'sentence') || chunkingStrategies[0];
       setChunkingStrategy(sentenceStrategy);
-      setChunkSize(sentenceStrategy.defaultSize);
-      setChunkOverlap(sentenceStrategy.defaultOverlap);
+      setChunkSize(512);  // Backend default chunk size
+      setChunkOverlap(50); // Backend default overlap
       setNormalize(true);
       setHasChanges(true);
     }
@@ -877,8 +1006,8 @@ const KnowledgeBaseSettings = ({
                   <div className="summary-title">청킹 전략</div>
                   <div className="summary-value">{chunkingStrategy.name}</div>
                   <div className="summary-meta">
-                    <span className="meta-item">크기: {chunkSize.toLocaleString()}토큰</span>
-                    <span className="meta-item">오버랩: {chunkOverlap.toLocaleString()}토큰</span>
+                    <span className="meta-item">크기: {chunkSize.toLocaleString()}문자</span>
+                    <span className="meta-item">오버랩: {chunkOverlap.toLocaleString()}문자</span>
                   </div>
                 </div>
               </div>
@@ -921,7 +1050,7 @@ const KnowledgeBaseSettings = ({
                             </span>
                             {documentText && (
                               <span className="meta-item">
-                                텍스트: {countTokens(documentText).toLocaleString()} 토큰
+                                텍스트: {documentText.length.toLocaleString()} 문자
                               </span>
                             )}
                             {previewChunks.length > 0 && (
@@ -962,10 +1091,11 @@ const KnowledgeBaseSettings = ({
                                 const collectionEffectiveChunkSize = Math.max(1, collectionChunkSize - collectionOverlap);
                                 const estimatedDocTokens = docChunkCount * collectionEffectiveChunkSize;
                                 
-                                // 임시 텍스트 생성 (실제 토큰 수에 기반한 더미 텍스트)
-                                const wordsPerToken = 0.75; // 대략적인 토큰-단어 비율
-                                const estimatedWords = Math.ceil(estimatedDocTokens * wordsPerToken);
-                                docText = Array(estimatedWords).fill('word').join(' ');
+                                // 임시 텍스트 생성 (실제 문자 수에 기반한 더미 텍스트)
+                                const charsPerChunk = collectionEffectiveChunkSize; // 청크당 문자 수
+                                const estimatedChars = docChunkCount * charsPerChunk;
+                                // Create a dummy text of the estimated character length
+                                docText = 'x'.repeat(estimatedChars);
                               }
                               
                               // 실제 청킹 서비스를 사용하여 예상 청크 수 계산
@@ -998,7 +1128,7 @@ const KnowledgeBaseSettings = ({
                             }
                           }
                         } else if (collectionMetadata && collectionMetadata.total_tokens) {
-                          // 문서 목록이 없는 경우 전체 토큰 기반 계산 (백업)
+                          // 문서 목록이 없는 경우 전체 문자 기반 계산 (백업)
                           const effectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
                           estimatedChunks = Math.max(1, Math.ceil(collectionMetadata.total_tokens / effectiveChunkSize));
                         } else if (currentChunkCount > 0) {

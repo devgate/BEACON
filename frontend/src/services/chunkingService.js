@@ -166,67 +166,55 @@ const findOverlapText = (prevText, currentText) => {
 
 export const chunkByFixedSize = (text, size, overlap) => {
   const chunks = [];
-  const words = text.split(/\s+/);
   let currentPosition = 0;
   
-  while (currentPosition < words.length) {
-    let currentChunk = '';
-    let currentTokens = 0;
-    let wordsInChunk = 0;
-    let chunkStartPosition = currentPosition;
+  while (currentPosition < text.length) {
+    // Extract chunk of 'size' characters
+    let endPosition = Math.min(currentPosition + size, text.length);
+    let currentChunk = text.substring(currentPosition, endPosition);
     
-    while (currentPosition < words.length && currentTokens < size) {
-      const nextWord = words[currentPosition];
-      const nextWordTokens = countTokens(nextWord);
-      
-      if (currentTokens + nextWordTokens <= size) {
-        currentChunk += (currentChunk ? ' ' : '') + nextWord;
-        currentTokens += nextWordTokens;
-        wordsInChunk++;
-        currentPosition++;
-      } else {
-        break;
+    // Try to break at word boundary if not at end of text
+    if (endPosition < text.length && currentChunk.length === size) {
+      const lastSpaceIndex = currentChunk.lastIndexOf(' ');
+      if (lastSpaceIndex > size * 0.8) { // Only break if we're at least 80% through
+        currentChunk = currentChunk.substring(0, lastSpaceIndex);
+        endPosition = currentPosition + lastSpaceIndex;
       }
     }
     
-    if (currentChunk.trim() && currentTokens >= Math.floor(size * 0.1)) {
+    if (currentChunk.trim()) {
       chunks.push({
         id: chunks.length + 1,
         text: currentChunk.trim(),
-        tokens: currentTokens,
-        words: wordsInChunk,
-        start_word: chunkStartPosition,
-        end_word: currentPosition,
+        tokens: countTokens(currentChunk.trim()), // Still calculate tokens for display
+        characters: currentChunk.trim().length,
+        words: currentChunk.trim().split(/\s+/).length,
+        start_char: currentPosition,
+        end_char: endPosition,
         type: 'fixed-size'
       });
     }
     
-    // Calculate advancement position with proper overlap handling
-    if (overlap > 0 && currentTokens > overlap && wordsInChunk > 1) {
-      // Ensure overlap doesn't exceed 80% of chunk size to prevent pathological behavior
-      const maxOverlap = Math.min(overlap, Math.floor(currentTokens * 0.8));
-      let overlapWords = Math.floor(wordsInChunk * (maxOverlap / currentTokens));
+    // Calculate next position with overlap
+    if (overlap > 0 && endPosition < text.length) {
+      // Move forward by (size - overlap) characters
+      currentPosition = endPosition - overlap;
       
-      // Ensure minimum advancement: at least 25% of chunk or 5 words, whichever is larger
-      const minAdvancement = Math.max(5, Math.floor(wordsInChunk * 0.25));
-      const actualAdvancement = Math.max(minAdvancement, wordsInChunk - overlapWords);
-      
-      currentPosition = chunkStartPosition + actualAdvancement;
+      // Try to find a word boundary for the overlap start
+      if (currentPosition > 0 && currentPosition < text.length) {
+        const nearbyText = text.substring(Math.max(0, currentPosition - 10), Math.min(text.length, currentPosition + 10));
+        const spaceIndex = nearbyText.indexOf(' ', 10);
+        if (spaceIndex !== -1 && spaceIndex < 15) {
+          currentPosition = currentPosition - 10 + spaceIndex + 1;
+        }
+      }
     } else {
-      // No overlap: advance by at least half the chunk size or all remaining words
-      const advancement = Math.max(Math.floor(wordsInChunk * 0.5), 1);
-      currentPosition = chunkStartPosition + advancement;
+      currentPosition = endPosition;
     }
     
     // Safety check to prevent infinite loops
-    if (currentPosition <= chunkStartPosition) {
-      currentPosition = chunkStartPosition + Math.max(1, Math.floor(wordsInChunk * 0.5));
-    }
-    
-    // Early termination for small remaining content
-    const remainingWords = words.length - currentPosition;
-    if (remainingWords < Math.floor(size * 0.1 / 5)) { // Rough estimate: size/5 words
-      break;
+    if (currentPosition === endPosition - size) {
+      currentPosition = endPosition;
     }
   }
   
@@ -238,42 +226,54 @@ export const chunkBySentence = (text, size, overlap) => {
   const chunks = [];
   let currentChunk = '';
   let sentenceIndices = [];
-  let currentTokens = 0;
+  let currentChars = 0;
 
   for (let i = 0; i < sentences.length; i++) {
     const sentence = sentences[i].trim();
-    const sentenceTokens = countTokens(sentence);
+    const sentenceChars = sentence.length;
     
-    if (currentTokens + sentenceTokens > size && currentChunk) {
+    // Check if adding this sentence would exceed the character limit
+    if (currentChars + sentenceChars + (currentChunk ? 1 : 0) > size && currentChunk) {
       chunks.push({
         id: chunks.length + 1,
         text: currentChunk.trim(),
-        tokens: currentTokens,
+        tokens: countTokens(currentChunk.trim()), // Still calculate tokens for display
+        characters: currentChunk.trim().length,
         sentences: sentenceIndices.length,
         sentence_range: `${sentenceIndices[0] + 1}-${sentenceIndices[sentenceIndices.length - 1] + 1}`,
         type: 'sentence-boundary',
         completeness: calculateSentenceCompleteness(currentChunk)
       });
       
-      const overlapSentences = Math.min(
-        Math.floor(overlap / (currentTokens / sentenceIndices.length)), 
-        sentenceIndices.length - 1
-      );
+      // Calculate overlap based on characters
+      let overlapChars = 0;
+      let overlapStart = sentenceIndices.length;
       
-      if (overlapSentences > 0) {
-        const overlapStart = sentenceIndices.length - overlapSentences;
-        currentChunk = sentenceIndices.slice(overlapStart).map(idx => sentences[idx]).join(' ') + ' ' + sentence;
+      // Find how many sentences to include for overlap
+      for (let j = sentenceIndices.length - 1; j >= 0; j--) {
+        const overlapSentence = sentences[sentenceIndices[j]];
+        overlapChars += overlapSentence.length;
+        if (overlapChars >= overlap) {
+          overlapStart = j;
+          break;
+        }
+      }
+      
+      if (overlapStart < sentenceIndices.length) {
+        // Create overlap from previous chunk
+        const overlapSentences = sentenceIndices.slice(overlapStart).map(idx => sentences[idx]);
+        currentChunk = overlapSentences.join(' ') + ' ' + sentence;
         sentenceIndices = sentenceIndices.slice(overlapStart).concat([i]);
-        currentTokens = countTokens(currentChunk);
+        currentChars = currentChunk.length;
       } else {
         currentChunk = sentence;
         sentenceIndices = [i];
-        currentTokens = sentenceTokens;
+        currentChars = sentenceChars;
       }
     } else {
       currentChunk += (currentChunk ? ' ' : '') + sentence;
       sentenceIndices.push(i);
-      currentTokens += sentenceTokens;
+      currentChars = currentChunk.length;
     }
   }
 
@@ -281,7 +281,8 @@ export const chunkBySentence = (text, size, overlap) => {
     chunks.push({
       id: chunks.length + 1,
       text: currentChunk.trim(),
-      tokens: currentTokens,
+      tokens: countTokens(currentChunk.trim()), // Still calculate tokens for display
+      characters: currentChunk.trim().length,
       sentences: sentenceIndices.length,
       sentence_range: `${sentenceIndices[0] + 1}-${sentenceIndices[sentenceIndices.length - 1] + 1}`,
       type: 'sentence-boundary',
@@ -297,40 +298,53 @@ export const chunkByParagraph = (text, size, overlap) => {
   const chunks = [];
   let currentChunk = '';
   let paragraphIndices = [];
-  let currentTokens = 0;
+  let currentChars = 0;
 
   for (let i = 0; i < paragraphs.length; i++) {
     const paragraph = paragraphs[i].trim();
-    const paragraphTokens = countTokens(paragraph);
+    const paragraphChars = paragraph.length;
+    const separator = currentChunk ? '\n\n' : '';
     
-    if (currentTokens + paragraphTokens > size && currentChunk) {
+    if (currentChars + separator.length + paragraphChars > size && currentChunk) {
       chunks.push({
         id: chunks.length + 1,
         text: currentChunk.trim(),
-        tokens: currentTokens,
+        tokens: countTokens(currentChunk.trim()), // Still calculate tokens for display
+        characters: currentChunk.trim().length,
         paragraphs: paragraphIndices.length,
         paragraph_range: `${paragraphIndices[0] + 1}-${paragraphIndices[paragraphIndices.length - 1] + 1}`,
         type: 'paragraph-boundary',
         coherence: calculateParagraphCoherence(currentChunk)
       });
       
-      const overlapTokens = Math.min(overlap, currentTokens);
-      const overlapParas = Math.floor(overlapTokens / (currentTokens / paragraphIndices.length));
+      // Calculate overlap based on characters
+      let overlapChars = 0;
+      let overlapStart = paragraphIndices.length;
       
-      if (overlapParas > 0) {
-        const overlapStart = Math.max(0, paragraphIndices.length - overlapParas);
-        currentChunk = paragraphIndices.slice(overlapStart).map(idx => paragraphs[idx]).join('\n\n') + '\n\n' + paragraph;
+      // Find how many paragraphs to include for overlap
+      for (let j = paragraphIndices.length - 1; j >= 0; j--) {
+        const overlapPara = paragraphs[paragraphIndices[j]];
+        overlapChars += overlapPara.length + (j < paragraphIndices.length - 1 ? 2 : 0); // Account for \n\n
+        if (overlapChars >= overlap) {
+          overlapStart = j;
+          break;
+        }
+      }
+      
+      if (overlapStart < paragraphIndices.length) {
+        const overlapParagraphs = paragraphIndices.slice(overlapStart).map(idx => paragraphs[idx]);
+        currentChunk = overlapParagraphs.join('\n\n') + '\n\n' + paragraph;
         paragraphIndices = paragraphIndices.slice(overlapStart).concat([i]);
-        currentTokens = countTokens(currentChunk);
+        currentChars = currentChunk.length;
       } else {
         currentChunk = paragraph;
         paragraphIndices = [i];
-        currentTokens = paragraphTokens;
+        currentChars = paragraphChars;
       }
     } else {
-      currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+      currentChunk += separator + paragraph;
       paragraphIndices.push(i);
-      currentTokens += paragraphTokens;
+      currentChars = currentChunk.length;
     }
   }
 
@@ -338,7 +352,8 @@ export const chunkByParagraph = (text, size, overlap) => {
     chunks.push({
       id: chunks.length + 1,
       text: currentChunk.trim(),
-      tokens: currentTokens,
+      tokens: countTokens(currentChunk.trim()), // Still calculate tokens for display
+      characters: currentChunk.trim().length,
       paragraphs: paragraphIndices.length,
       paragraph_range: `${paragraphIndices[0] + 1}-${paragraphIndices[paragraphIndices.length - 1] + 1}`,
       type: 'paragraph-boundary',

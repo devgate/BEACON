@@ -114,7 +114,7 @@ const ChunkingPreview = ({
                   </div>
                   
                   <div className="chunks-container">
-                    {previewChunks.slice(0, 10).map((chunk, index) => (
+                    {previewChunks.map((chunk, index) => (
                       <div key={index} className={`chunk-item ${chunk.type?.replace('_', '-')}`}>
                         <div className="chunk-header">
                           <div className="chunk-title-section">
