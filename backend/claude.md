@@ -1,5 +1,38 @@
 # BEACON Backend - Flask API Documentation
 
+# ⚡ AI MANDATORY RULES - MUST EXECUTE BEFORE ANY ACTION
+
+## 🔴 CRITICAL: Docker Service Check Protocol
+**PRIORITY 1: ALWAYS CHECK DOCKER FIRST**
+
+### Before ANY of these commands:
+- `python app.py`, `python -m pytest`, `pip install`
+- `flask run`, `gunicorn`, `pytest`
+- Any Python server or test command
+
+### MANDATORY CHECKS (IN THIS ORDER):
+1. **FIRST**: `docker ps` - Check all running containers
+2. **SECOND**: `docker-compose ps` - Check compose services
+3. **THIRD**: `lsof -i :5000` - Check backend port
+
+### IF DOCKER SERVICES ARE RUNNING:
+✅ **USE THESE COMMANDS INSTEAD:**
+- Run tests: `docker-compose exec backend python -m pytest`
+- Install packages: `docker-compose exec backend pip install [package]`
+- Enter container: `docker-compose exec backend bash`
+- View logs: `docker-compose logs -f backend`
+- Restart service: `docker-compose restart backend`
+
+❌ **NEVER DO THIS:**
+- Run `python app.py` locally
+- Create new virtual environments
+- Start duplicate Flask servers
+
+### VALIDATION CHECKPOINT:
+⚠️ **AI MUST CONFIRM**: "I have checked Docker services" before proceeding
+
+---
+
 ## 🏗️ Architecture Overview
 
 **BEACON Backend**: Python Flask API with modular architecture supporting RAG functionality through AWS Bedrock and ChromaDB integration.

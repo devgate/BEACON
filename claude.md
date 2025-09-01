@@ -1,5 +1,40 @@
 # BEACON Project - Coding Standards & Guidelines
 
+# ⚡ AI MANDATORY RULES - MUST EXECUTE BEFORE ANY ACTION
+
+## 🔴 CRITICAL: Docker Service Check Protocol
+**PRIORITY 1: ALWAYS CHECK DOCKER FIRST**
+
+### Before ANY of these commands:
+- `npm start`, `npm run build`, `npm test`, `npm install`
+- `python app.py`, `python -m pytest`, `pip install`
+- `yarn start`, `yarn build`, `yarn test`
+- Any server startup or build command
+
+### MANDATORY CHECKS (IN THIS ORDER):
+1. **FIRST**: `docker ps` - Check all running containers
+2. **SECOND**: `docker-compose ps` - Check compose services  
+3. **THIRD**: `lsof -i :3000` - Check frontend port
+4. **FOURTH**: `lsof -i :5000` - Check backend port
+
+### IF DOCKER SERVICES ARE RUNNING:
+✅ **USE THESE COMMANDS INSTEAD:**
+- Frontend build: `docker-compose exec frontend npm run build`
+- Backend test: `docker-compose exec backend python -m pytest`
+- Frontend logs: `docker-compose logs -f frontend`
+- Backend logs: `docker-compose logs -f backend`
+- Enter container: `docker-compose exec [service] bash`
+
+❌ **NEVER DO THIS:**
+- Start new server instances
+- Run npm/python commands locally
+- Create duplicate services
+
+### VALIDATION CHECKPOINT:
+⚠️ **AI MUST CONFIRM**: "I have checked Docker services" before proceeding with any build/test/run command
+
+---
+
 ## 🎯 Project Overview
 **BEACON**: Enterprise RAG (Retrieval-Augmented Generation) Platform for intelligent document processing and knowledge management.
 

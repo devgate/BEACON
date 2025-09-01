@@ -1,5 +1,38 @@
 # BEACON Frontend - React Application Documentation
 
+# ⚡ AI MANDATORY RULES - MUST EXECUTE BEFORE ANY ACTION
+
+## 🔴 CRITICAL: Docker Service Check Protocol
+**PRIORITY 1: ALWAYS CHECK DOCKER FIRST**
+
+### Before ANY of these commands:
+- `npm start`, `npm run build`, `npm test`, `npm install`
+- `yarn start`, `yarn build`, `yarn test`
+- Any Node.js server or build command
+
+### MANDATORY CHECKS (IN THIS ORDER):
+1. **FIRST**: `docker ps` - Check all running containers
+2. **SECOND**: `docker-compose ps` - Check compose services
+3. **THIRD**: `lsof -i :3000` - Check frontend port
+
+### IF DOCKER SERVICES ARE RUNNING:
+✅ **USE THESE COMMANDS INSTEAD:**
+- Build app: `docker-compose exec frontend npm run build`
+- Run tests: `docker-compose exec frontend npm test`
+- Install packages: `docker-compose exec frontend npm install [package]`
+- Enter container: `docker-compose exec frontend bash`
+- View logs: `docker-compose logs -f frontend`
+- Restart service: `docker-compose restart frontend`
+
+❌ **NEVER DO THIS:**
+- Run `npm start` locally
+- Create new node_modules
+- Start duplicate React dev servers
+
+### VALIDATION CHECKPOINT:
+⚠️ **AI MUST CONFIRM**: "I have checked Docker services" before proceeding
+
+---
 ## 🎨 Architecture Overview
 
 **BEACON Frontend**: React 18+ application with modern hooks, component-based architecture, and responsive design for RAG document management and AI chat interface.
