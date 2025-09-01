@@ -11,14 +11,10 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { bedrockService, documentService, collectionService } from '../../services/api';
 import { 
-  chunkingStrategies, 
-  generatePreviewChunks, 
-  getStrategyInsights, 
-  countTokens 
+  chunkingStrategies 
 } from '../../services/chunkingService';
 import EmbeddingModelSelector from './EmbeddingModelSelector';
 import ChunkingStrategyConfig from './ChunkingStrategyConfig';
-import ChunkingPreview from './ChunkingPreview';
 import useReprocessingStatus from '../../hooks/useReprocessingStatus';
 import './KnowledgeBaseSettings.css';
 
@@ -36,12 +32,6 @@ const KnowledgeBaseSettings = ({
   const [loadingModels, setLoadingModels] = useState(true);
   const [modelsFetchError, setModelsFetchError] = useState(null);
 
-  // State for document chunking preview
-  const [availableDocuments, setAvailableDocuments] = useState([]);
-  const [selectedDocument, setSelectedDocument] = useState(null);
-  const [documentText, setDocumentText] = useState('');
-  const [previewChunks, setPreviewChunks] = useState([]);
-  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // State for collection metadata
   const [collectionMetadata, setCollectionMetadata] = useState(null);
@@ -101,7 +91,6 @@ const KnowledgeBaseSettings = ({
     fetchEmbeddingModels();
     initializeDefaultSettings(); // Initialize with backend defaults
     if (selectedIndexId) {
-      fetchAvailableDocuments();
       loadCollectionMetadata();
     }
   }, []);
@@ -109,13 +98,8 @@ const KnowledgeBaseSettings = ({
   // Fetch documents and metadata when KB changes
   useEffect(() => {
     if (selectedIndexId) {
-      fetchAvailableDocuments();
       loadCollectionMetadata();
     } else {
-      setAvailableDocuments([]);
-      setSelectedDocument(null);
-      setDocumentText('');
-      setPreviewChunks([]);
       setCollectionMetadata(null);
       setCurrentChunkCount(0);
     }
@@ -377,296 +361,10 @@ const KnowledgeBaseSettings = ({
   };
 
 
-  const fetchAvailableDocuments = async () => {
-    try {
-      // Use full URL to bypass proxy issues during development
-      const baseUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5000' 
-        : '';
-      
-      // If selectedIndexId is present, fetch documents for that knowledge base
-      let endpoint = `${baseUrl}/api/documents`;
-      if (selectedIndexId) {
-        // Try to fetch documents for specific knowledge base first
-        endpoint = `${baseUrl}/api/knowledge-bases/${selectedIndexId}/documents`;
-      }
-      
-      const response = await fetch(endpoint);
-      
-      // If KB-specific endpoint fails, fall back to all documents
-      if (!response.ok && selectedIndexId) {
-        console.log('Knowledge base specific endpoint not available, fetching all documents');
-        const fallbackResponse = await fetch(`${baseUrl}/api/documents`);
-        if (!fallbackResponse.ok) {
-          throw new Error(`HTTP ${fallbackResponse.status}: ${fallbackResponse.statusText}`);
-        }
-        const fallbackData = await fallbackResponse.json();
-        const documents = fallbackData.documents || (Array.isArray(fallbackData) ? fallbackData : []);
-        
-        // Filter documents by knowledge_base_id if selectedIndexId is present
-        const filteredDocs = selectedIndexId 
-          ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId)
-          : documents;
-        
-        const readyDocuments = filteredDocs.filter(doc => {
-          // Accept documents with ready status or no status field (which means ready)
-          const hasValidStatus = !doc.status || 
-            ['Ready', 'Success', 'ready', 'success', 'completed', 'processed', 'Processing'].includes(doc.status);
-          const hasFileName = doc.file_name || doc.title;
-          return hasValidStatus && hasFileName;
-        }).slice(0, 10);
-        
-        setAvailableDocuments(readyDocuments);
-        return;
-      }
-      
-      const data = await response.json();
-      
-      // Handle API response format (object with documents array)
-      const documents = data.documents || (Array.isArray(data) ? data : []);
-      
-      // Filter documents by knowledge_base_id if selectedIndexId is present
-      const filteredDocs = selectedIndexId 
-        ? documents.filter(doc => doc.knowledge_base_id == selectedIndexId)
-        : documents;
-      
-      // Filter for ready documents only - support multiple status values or no status
-      const readyDocuments = filteredDocs.filter(doc => {
-        // Accept documents with ready status or no status field (which means ready)
-        const hasValidStatus = !doc.status || 
-          ['Ready', 'Success', 'ready', 'success', 'completed', 'processed', 'Processing'].includes(doc.status);
-        const hasFileName = doc.file_name || doc.title;
-        return hasValidStatus && hasFileName;
-      }).slice(0, 10); // Limit to 10 documents for performance
-      
-      setAvailableDocuments(readyDocuments);
-      console.log(`Loaded ${readyDocuments.length} documents for Knowledge Base ${selectedIndexId}`);
-    } catch (error) {
-      console.error('Failed to fetch documents:', error);
-      setAvailableDocuments([]);
-    }
-  };
 
-  const fetchDocumentText = async (documentId) => {
-    setLoadingPreview(true);
-    try {
-      // Use full URL to bypass proxy issues during development
-      const baseUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5000' 
-        : '';
-      
-      // Try document preview API first
-      let documentText = '';
-      let selectedDoc = null;
-      
-      try {
-        const previewResponse = await fetch(`${baseUrl}/api/documents/${documentId}/preview`);
-        if (previewResponse.ok) {
-          const previewData = await previewResponse.json();
-          documentText = previewData.text_content || '';
-          selectedDoc = {
-            id: documentId,
-            title: previewData.metadata?.file_name || 'Unknown Document',
-            file_name: previewData.metadata?.file_name
-          };
-          
-          console.log('Document preview loaded successfully:', {
-            id: documentId,
-            title: selectedDoc.title,
-            contentLength: documentText.length,
-            hasImages: previewData.images?.length || 0
-          });
-        }
-      } catch (previewError) {
-        console.warn('Document preview API failed, falling back to documents list:', previewError);
-      }
-      
-      // Fallback: Get document from documents list
-      if (!documentText || !selectedDoc) {
-        const response = await fetch(`${baseUrl}/api/documents`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        const documents = data.documents || (Array.isArray(data) ? data : []);
-        selectedDoc = documents.find(doc => doc.id.toString() === documentId.toString());
-        
-        if (!selectedDoc) {
-          throw new Error('Document not found');
-        }
-        
-        // Try to get actual document content from multiple sources
-        documentText = selectedDoc.content || 
-                      selectedDoc.text || 
-                      selectedDoc.extracted_text ||
-                      selectedDoc.raw_content;
-        
-        // If no cached content, fetch from preview API
-        if (!documentText || documentText.trim().length === 0) {
-          console.log('No cached content found, fetching from preview API...');
-          try {
-            const previewResponse = await fetch(`/api/documents/${selectedDoc.id}/preview`);
-            if (previewResponse.ok) {
-              const previewData = await previewResponse.json();
-              documentText = previewData.text_content || '';
-              console.log('Fetched document content from preview API:', documentText.length, 'characters');
-            } else {
-              console.error('Preview API failed:', previewResponse.status, previewResponse.statusText);
-              throw new Error(`Preview API returned ${previewResponse.status}`);
-            }
-          } catch (apiError) {
-            console.error('Failed to fetch document preview:', apiError);
-            throw new Error(`문서 내용을 불러올 수 없습니다: ${apiError.message}`);
-          }
-        }
-      }
-      
-      // Ensure we have valid text content
-      if (!documentText || documentText.trim().length === 0) {
-        throw new Error('이 문서에서 텍스트 내용을 찾을 수 없습니다. 파일이 손상되었거나 텍스트를 포함하지 않을 수 있습니다.');
-      }
-      
-      setDocumentText(documentText);
-      
-      console.log('Final document loaded:', {
-        id: selectedDoc.id,
-        title: selectedDoc.title || selectedDoc.file_name,
-        contentLength: documentText.length,
-        hasRealContent: !documentText.includes('샘플 문서 내용입니다')
-      });
-      
-      // Generate preview chunks based on current settings
-      const strategy = chunkingStrategy || chunkingStrategies[0];
-      if (strategy) {
-        const chunks = generatePreviewChunks(documentText, strategy, chunkSize, chunkOverlap);
-        setPreviewChunks(chunks);
-        if (!chunkingStrategy) {
-          setChunkingStrategy(strategy);
-          setChunkSize(strategy.defaultSize);
-          setChunkOverlap(strategy.defaultOverlap);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch document text:', error);
-      setNotification({
-        message: `문서 콘텐츠 로딩 실패: ${error.message}`,
-        type: 'error'
-      });
-      setDocumentText('');
-      setPreviewChunks([]);
-    } finally {
-      setLoadingPreview(false);
-    }
-  };
 
-  // Generate preview chunks using chunking service
-  const handleGeneratePreviewChunks = (text, strategy, size, overlap) => {
-    console.log('handleGeneratePreviewChunks called:', {
-      textLength: text?.length || 0,
-      strategyId: strategy?.id || 'none',
-      size,
-      overlap
-    });
 
-    if (!text || !strategy) {
-      console.warn('Missing text or strategy for chunking preview');
-      setPreviewChunks([]);
-      return;
-    }
 
-    try {
-      const chunks = generatePreviewChunks(text, strategy, size, overlap);
-      setPreviewChunks(chunks);
-    } catch (error) {
-      console.error('Error generating preview chunks:', error);
-      setPreviewChunks([]);
-      setNotification({
-        message: `청킹 생성 중 오류 발생: ${error.message}`,
-        type: 'error'
-      });
-    }
-  };
-
-  // Handler for document selection in preview
-  const handleDocumentSelect = async (documentId) => {
-    console.log('Document selected for preview:', documentId);
-    if (documentId) {
-      setSelectedDocument(documentId);
-      
-      // Get actual stored chunk count from ChromaDB first
-      try {
-        const response = await fetch(`http://localhost:5000/api/chroma/document/${documentId}`);
-        const docInfo = await response.json();
-        
-        if (docInfo.success && docInfo.document_info) {
-          const actualChunkCount = docInfo.document_info.chunk_count || 0;
-          console.log(`Document ${documentId} has ${actualChunkCount} actual chunks in ChromaDB`);
-          
-          // Get actual chunk contents from ChromaDB
-          try {
-            const chunksResponse = await fetch(`http://localhost:5000/api/chroma/document/${documentId}/chunks`);
-            const chunksData = await chunksResponse.json();
-            
-            if (chunksData.success && chunksData.chunks) {
-              const actualChunks = chunksData.chunks.map((chunkText, i) => ({
-                id: i,
-                text: chunkText,
-                size: `${chunkText.length} chars`,
-                actualChunk: true,
-                chunkIndex: i + 1,
-                totalChunks: chunksData.chunk_count
-              }));
-              
-              setPreviewChunks(actualChunks);
-              
-              // Use reconstructed text from ChromaDB chunks instead of original text
-              // This ensures the chunking preview uses the SAME text that was actually chunked and stored
-              // IMPORTANT: Join without separators to avoid creating artificial sentence breaks
-              const reconstructedText = chunksData.chunks.join(' ');
-              setDocumentText(reconstructedText);
-              console.log(`Using reconstructed text from ${chunksData.chunks.length} ChromaDB chunks: ${reconstructedText.length} characters`);
-              console.log('This ensures chunking preview uses the exact same text that was actually processed during upload');
-              
-              console.log(`Loaded ${actualChunks.length} actual chunks from ChromaDB for ${documentId}`);
-              return;
-            }
-          } catch (chunksError) {
-            console.error('Failed to fetch actual chunks:', chunksError);
-          }
-          
-          // Fallback: Create preview chunks showing the actual count
-          const actualChunks = Array.from({length: actualChunkCount}, (_, i) => ({
-            id: i,
-            text: `실제 저장된 청크 ${i + 1}/${actualChunkCount} (내용 로딩 실패)`,
-            size: 'varies',
-            actualChunk: true
-          }));
-          
-          setPreviewChunks(actualChunks);
-          return;
-        } else {
-          console.log('No ChromaDB info available, falling back to text simulation');
-          fetchDocumentText(documentId);
-        }
-      } catch (error) {
-        console.error('Failed to get actual chunk count:', error);
-        fetchDocumentText(documentId);
-      }
-    } else {
-      setSelectedDocument(null);
-      setDocumentText('');
-      setPreviewChunks([]);
-    }
-  };
-
-  // Handler for refreshing preview
-  const handleRefreshPreview = () => {
-    if (selectedDocument) {
-      console.log('Refreshing preview for document:', selectedDocument);
-      fetchDocumentText(selectedDocument);
-    }
-  };
 
   // Format model data for display
   const formatModelData = (model) => {
@@ -685,26 +383,6 @@ const KnowledgeBaseSettings = ({
 
 
 
-  // Regenerate chunks when strategy or parameters change
-  useEffect(() => {
-    console.log('useEffect triggered for chunking preview:', {
-      hasDocumentText: !!documentText,
-      hasChunkingStrategy: !!chunkingStrategy,
-      chunkSize,
-      chunkOverlap,
-      strategyId: chunkingStrategy?.id
-    });
-    
-    if (documentText && chunkingStrategy) {
-      console.log('Regenerating chunks due to parameter change');
-      handleGeneratePreviewChunks(documentText, chunkingStrategy, chunkSize, chunkOverlap);
-    } else {
-      console.log('Skipping chunk generation:', {
-        documentText: !!documentText,
-        chunkingStrategy: !!chunkingStrategy
-      });
-    }
-  }, [chunkingStrategy, chunkSize, chunkOverlap, documentText]);
 
   // Load settings when knowledge base changes
   useEffect(() => {
@@ -854,12 +532,6 @@ const KnowledgeBaseSettings = ({
         });
       }
       
-      if (documentText && chunkingStrategy) {
-        setTimeout(() => {
-          console.log('Force regenerating chunks after chunk size change');
-          handleGeneratePreviewChunks(documentText, chunkingStrategy, clampedValue, chunkOverlap);
-        }, 0);
-      }
     }
   };
 
@@ -881,12 +553,6 @@ const KnowledgeBaseSettings = ({
       });
     }
     
-    if (documentText && chunkingStrategy) {
-      setTimeout(() => {
-        console.log('Force regenerating chunks after overlap change');
-        handleGeneratePreviewChunks(documentText, chunkingStrategy, chunkSize, clampedValue);
-      }, 0);
-    }
   };
 
   const handleSaveSettings = async () => {
@@ -1043,24 +709,11 @@ const KnowledgeBaseSettings = ({
           onStrategyChange={handleChunkingStrategyChange}
           onChunkSizeChange={handleChunkSizeChange}
           onChunkOverlapChange={handleChunkOverlapChange}
-          selectedDocument={selectedDocument}
-          loadingPreview={loadingPreview}
           setNotification={setNotification}
           selectedIndexId={selectedIndexId}
           onTabSwitch={onTabSwitch}
         />
 
-        <ChunkingPreview
-          availableDocuments={availableDocuments}
-          selectedDocument={selectedDocument}
-          documentText={documentText}
-          previewChunks={previewChunks}
-          loadingPreview={loadingPreview}
-          chunkingStrategy={chunkingStrategy}
-          onDocumentSelect={handleDocumentSelect}
-          onRefreshPreview={handleRefreshPreview}
-          getStrategyInsights={getStrategyInsights}
-        />
 
         {/* Settings Summary */}
         {embeddingModel && chunkingStrategy && (
@@ -1110,146 +763,48 @@ const KnowledgeBaseSettings = ({
                   <div className="summary-value">
                     {loadingMetadata ? (
                       '로딩 중...'
-                    ) : selectedDocument ? (
-                      `선택 문서: ${(() => {
-                        if (previewChunks.length > 0) {
-                          return `${previewChunks.length}개 청크`;
-                        } else if (documentText && documentText.trim()) {
-                          const estimatedTextLength = countTokens(documentText);
-                          const effectiveChunkSize = chunkSize - chunkOverlap;
-                          const estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / effectiveChunkSize));
-                          return `약 ${estimatedChunks}개 청크 예상`;
-                        }
-                        return '미리보기 필요';
-                      })()}`
                     ) : (
                       `현재 컬렉션: ${currentChunkCount.toLocaleString()}개 청크`
                     )}
                   </div>
                   <div className="summary-meta">
                     {(() => {
-                      if (selectedDocument) {
-                        // 선택된 문서가 있는 경우: 문서별 청킹 정보 표시
-                        const docName = availableDocuments.find(doc => doc.id.toString() === selectedDocument.toString())?.file_name || 'Unknown';
-                        
-                        return (
-                          <>
-                            <span className="meta-item">
-                              문서: {docName.length > 20 ? `${docName.substring(0, 20)}...` : docName}
-                            </span>
-                            {documentText && (
-                              <span className="meta-item">
-                                텍스트: {documentText.length.toLocaleString()} 문자
-                              </span>
-                            )}
-                            {previewChunks.length > 0 && (
-                              <span className="meta-item success">
-                                미리보기 완료
-                              </span>
-                            )}
-                          </>
-                        );
-                      } else {
-                        // 컬렉션 전체 정보 표시 - 개별 문서 청킹 시뮬레이션 기반 계산
-                        let estimatedChunks = 0;
-                        
-                        // 개별 문서들의 실제 청킹 시뮬레이션 결과를 합산하여 계산
-                        if (availableDocuments && availableDocuments.length > 0) {
-                          console.log('Calculating per-document chunk estimates with actual chunking service:', {
-                            documentsCount: availableDocuments.length,
-                            currentSettings: { chunkSize, chunkOverlap, strategy: chunkingStrategy?.id },
-                            collectionCurrentChunks: currentChunkCount
-                          });
-                          
-                          // 각 문서에 대해 실제 청킹 서비스를 사용한 시뮬레이션 수행
-                          for (const doc of availableDocuments) {
-                            try {
-                              // 문서의 실제 텍스트 가져오기 (캐시된 documentText 사용 또는 API 호출)
-                              let docText = '';
-                              
-                              // 현재 선택된 문서와 같으면 이미 로딩된 텍스트 사용
-                              if (selectedDocument && selectedDocument.toString() === doc.id.toString() && documentText) {
-                                docText = documentText;
-                              } else {
-                                // API에서 문서 텍스트 가져오기 (실제 구현에서는 캐싱 필요)
-                                console.log(`Need to fetch text for document ${doc.file_name} (id: ${doc.id})`);
-                                // 임시로 추정된 텍스트 길이 사용 (실제 텍스트를 가져올 수 없는 경우)
-                                const docChunkCount = doc.chunk_count || 1;
-                                const collectionChunkSize = collectionMetadata?.metadata?.chunk_size || 512;
-                                const collectionOverlap = collectionMetadata?.metadata?.chunk_overlap || 50;
-                                const collectionEffectiveChunkSize = Math.max(1, collectionChunkSize - collectionOverlap);
-                                const estimatedDocTokens = docChunkCount * collectionEffectiveChunkSize;
-                                
-                                // 임시 텍스트 생성 (실제 문자 수에 기반한 더미 텍스트)
-                                const charsPerChunk = collectionEffectiveChunkSize; // 청크당 문자 수
-                                const estimatedChars = docChunkCount * charsPerChunk;
-                                // Create a dummy text of the estimated character length
-                                docText = 'x'.repeat(estimatedChars);
-                              }
-                              
-                              // 실제 청킹 서비스를 사용하여 예상 청크 수 계산
-                              if (docText && chunkingStrategy) {
-                                const chunks = generatePreviewChunks(docText, chunkingStrategy, chunkSize, chunkOverlap);
-                                const docEstimatedChunks = chunks.length;
-                                
-                                console.log(`Document ${doc.file_name} actual chunking simulation:`, {
-                                  original_chunks: doc.chunk_count || 0,
-                                  text_length: docText.length,
-                                  simulated_chunks: docEstimatedChunks,
-                                  strategy: chunkingStrategy.id,
-                                  chunk_size: chunkSize,
-                                  overlap: chunkOverlap
-                                });
-                                
-                                estimatedChunks += docEstimatedChunks;
-                              }
-                            } catch (error) {
-                              console.error(`Failed to simulate chunking for document ${doc.file_name}:`, error);
-                              // 실패한 경우 기존 수학적 계산으로 폴백
-                              const docChunkCount = doc.chunk_count || 1;
-                              const collectionChunkSize = collectionMetadata?.metadata?.chunk_size || 512;
-                              const collectionOverlap = collectionMetadata?.metadata?.chunk_overlap || 50;
-                              const collectionEffectiveChunkSize = Math.max(1, collectionChunkSize - collectionOverlap);
-                              const estimatedDocTokens = docChunkCount * collectionEffectiveChunkSize;
-                              const newEffectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
-                              const docEstimatedChunks = Math.max(1, Math.ceil(estimatedDocTokens / newEffectiveChunkSize));
-                              estimatedChunks += docEstimatedChunks;
-                            }
-                          }
-                        } else if (collectionMetadata && collectionMetadata.total_tokens) {
-                          // 문서 목록이 없는 경우 전체 문자 기반 계산 (백업)
-                          const effectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
-                          estimatedChunks = Math.max(1, Math.ceil(collectionMetadata.total_tokens / effectiveChunkSize));
-                        } else if (currentChunkCount > 0) {
-                          // 메타데이터가 없는 경우 현재 청크 수 기반으로 추정
-                          const currentAvgChunkSize = 512; // 기존 설정 추정값
-                          const newEffectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
-                          const sizeRatio = currentAvgChunkSize / newEffectiveChunkSize;
-                          estimatedChunks = Math.max(1, Math.ceil(currentChunkCount * sizeRatio));
-                        }
-                        
-                        const chunkDifference = estimatedChunks - currentChunkCount;
-                        
-                        return (
-                          <>
-                            {estimatedChunks > 0 && (
-                              <span className="meta-item">
-                                새 설정 예상: {estimatedChunks.toLocaleString()}개 청크
-                              </span>
-                            )}
-                            {chunkDifference !== 0 && estimatedChunks > 0 && (
-                              <span className={`meta-item ${chunkDifference > 0 ? 'increase' : 'decrease'}`}>
-                                {chunkDifference > 0 ? '+' : ''}{chunkDifference.toLocaleString()}개 변화
-                              </span>
-                            )}
-                            {currentChunkCount === 0 && !loadingMetadata && (
-                              <span className="meta-item warning">
-                                컬렉션이 비어있음
-                              </span>
-                            )}
-                          </>
-                        );
+                      // 컬렉션 전체 정보 표시 - 수학적 계산 기반
+                      let estimatedChunks = 0;
+                      
+                      if (collectionMetadata && collectionMetadata.total_tokens) {
+                        // 전체 문자 기반 계산
+                        const effectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
+                        estimatedChunks = Math.max(1, Math.ceil(collectionMetadata.total_tokens / effectiveChunkSize));
+                      } else if (currentChunkCount > 0) {
+                        // 메타데이터가 없는 경우 현재 청크 수 기반으로 추정
+                        const currentAvgChunkSize = 512; // 기존 설정 추정값
+                        const newEffectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
+                        const sizeRatio = currentAvgChunkSize / newEffectiveChunkSize;
+                        estimatedChunks = Math.max(1, Math.ceil(currentChunkCount * sizeRatio));
                       }
+                      
+                      const chunkDifference = estimatedChunks - currentChunkCount;
+                      
+                      return (
+                        <>
+                          {estimatedChunks > 0 && (
+                            <span className="meta-item">
+                              새 설정 예상: {estimatedChunks.toLocaleString()}개 청크
+                            </span>
+                          )}
+                          {chunkDifference !== 0 && estimatedChunks > 0 && (
+                            <span className={`meta-item ${chunkDifference > 0 ? 'increase' : 'decrease'}`}>
+                              {chunkDifference > 0 ? '+' : ''}{chunkDifference.toLocaleString()}개 변화
+                            </span>
+                          )}
+                          {currentChunkCount === 0 && !loadingMetadata && (
+                            <span className="meta-item warning">
+                              컬렉션이 비어있음
+                            </span>
+                          )}
+                        </>
+                      );
                     })()}
                   </div>
                 </div>

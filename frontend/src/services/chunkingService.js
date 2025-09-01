@@ -555,51 +555,6 @@ export const chunkBySlidingWindow = (text, size, overlap) => {
   return chunks;
 };
 
-export const generatePreviewChunks = (text, strategy, size, overlap) => {
-  if (!text || !strategy) {
-    console.warn('Missing text or strategy for chunking preview');
-    return [];
-  }
-
-  let chunks = [];
-
-  try {
-    switch (strategy.id) {
-      case 'sentence':
-        chunks = chunkBySentence(text, size, overlap);
-        break;
-      case 'paragraph':
-        chunks = chunkByParagraph(text, size, overlap);
-        break;
-      case 'semantic':
-        chunks = chunkBySemantic(text, size, overlap);
-        break;
-      case 'sliding':
-        chunks = chunkBySlidingWindow(text, size, overlap);
-        break;
-      case 'by_title':
-        chunks = chunkByTitle(text, size, overlap); // Use title-based chunking (exact backend match)
-        break;
-      case 'fixed':
-      default:
-        chunks = chunkByFixedSize(text, size, overlap);
-        break;
-    }
-
-    console.log('Generated chunks:', {
-      totalChunks: chunks.length,
-      strategyUsed: strategy.id,
-      targetSize: size,
-      targetOverlap: overlap,
-      avgTokens: chunks.length > 0 ? Math.round(chunks.reduce((sum, c) => sum + c.tokens, 0) / chunks.length) : 0
-    });
-
-    return chunks;
-  } catch (error) {
-    console.error('Error generating preview chunks:', error);
-    return [];
-  }
-};
 
 export const calculateAverageQuality = (chunks, chunkSize) => {
   if (!chunks || chunks.length === 0) return 0;
