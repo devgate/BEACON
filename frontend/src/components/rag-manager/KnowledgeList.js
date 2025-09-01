@@ -27,13 +27,6 @@ const KnowledgeList = ({
           Knowledge List
         </div>
         <div className="section-header-controls">
-          <input 
-            type="text"
-            placeholder="입력하세요"
-            className="search-input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
           <div className="knowledge-actions">
             <button className="btn-new" onClick={handleNewKB}>New</button>
             <button className="btn-edit" onClick={handleEditKB}>Edit</button>

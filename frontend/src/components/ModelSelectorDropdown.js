@@ -48,7 +48,34 @@ const ModelSelectorDropdown = ({ selectedModel, onModelSelect, disabled = false 
       
       if (health.rag_enabled) {
         const modelsData = await bedrockService.getModels();
-        setModels(modelsData.models || []);
+        const allModels = modelsData.models || [];
+        
+        // 텍스트 지원 모델만 필터링 (임베딩 모델 제외)
+        const textModels = allModels.filter(model => {
+          const modelId = model.model_id.toLowerCase();
+          const isEmbeddingModel = modelId.includes('embed') || 
+                                  modelId.includes('embedding') ||
+                                  (model.output_modalities && 
+                                   model.output_modalities.includes('EMBEDDINGS') && 
+                                   !model.output_modalities.includes('TEXT'));
+          return !isEmbeddingModel;
+        });
+        
+        setModels(textModels);
+        
+        // 현재 적용된 모델이 있고 선택된 모델이 없으면 자동 선택
+        if (textModels.length > 0 && !selectedModel) {
+          // 기본 모델 우선순위: Claude 3.5 Sonnet -> Claude 3 Sonnet -> Claude 3 Haiku
+          const defaultModel = textModels.find(m => 
+            m.model_id.includes('claude-3-5-sonnet') ||
+            m.model_id.includes('claude-3-sonnet') ||
+            m.model_id.includes('claude-3-haiku')
+          ) || textModels[0];
+          
+          if (defaultModel) {
+            onModelSelect(defaultModel);
+          }
+        }
       } else {
         setModels([]);
       }
@@ -174,7 +201,7 @@ const ModelSelectorDropdown = ({ selectedModel, onModelSelect, disabled = false 
     <div className="model-selector-dropdown" ref={dropdownRef}>
       <div className="dropdown-section">
         <div className="model-header">
-          <h4>AI Model</h4>
+          <h4>AI 모델</h4>
           <div className={`status-info ${bedrockHealth?.status === 'healthy' ? 'healthy' : 
             bedrockHealth?.status === 'degraded' ? 'warning' : 'error'}`}>
             {getStatusIcon()}

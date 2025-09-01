@@ -21,7 +21,7 @@ def init_bedrock_module(app_context):
 
 @bedrock_bp.route('/api/bedrock/models')
 def get_bedrock_models():
-    """Get available Bedrock models"""
+    """Get available Bedrock models (text generation only, excluding embedding models)"""
     if not RAG_ENABLED:
         return jsonify({
             'error': 'RAG system not available',
@@ -29,17 +29,49 @@ def get_bedrock_models():
         }), 503
     
     try:
-        models = bedrock_service.get_available_models(include_inference_profiles=True)
-        model_list = []
+        all_models = bedrock_service.get_available_models(include_inference_profiles=True)
+        text_models = []
         
-        for model in models:
-            model_dict = model.to_dict()
-            model_list.append(model_dict)
+        for model in all_models:
+            # 임베딩 모델 필터링 - 텍스트 지원 모델만 포함
+            model_id_lower = model.model_id.lower()
+            is_embedding_model = (
+                'embed' in model_id_lower or
+                'embedding' in model_id_lower or
+                (hasattr(model, 'output_modalities') and 
+                 model.output_modalities and
+                 'EMBEDDINGS' in model.output_modalities and 
+                 'TEXT' not in model.output_modalities)
+            )
+            
+            # 텍스트 생성 모델만 포함
+            if not is_embedding_model:
+                model_dict = model.to_dict()
+                text_models.append(model_dict)
+        
+        # 모델을 우선순위별로 정렬 (Claude 3.5 Sonnet > Claude 3 Sonnet > Claude 3 Haiku > 기타)
+        def get_model_priority(model):
+            model_id = model.get('model_id', '').lower()
+            if 'claude-3-5-sonnet' in model_id:
+                return 1
+            elif 'claude-3-sonnet' in model_id:
+                return 2
+            elif 'claude-3-haiku' in model_id:
+                return 3
+            elif 'claude' in model_id:
+                return 4
+            elif 'nova' in model_id:
+                return 5
+            else:
+                return 6
+        
+        text_models.sort(key=get_model_priority)
         
         return jsonify({
-            'models': model_list,
-            'total_count': len(model_list),
-            'inference_profiles_included': True
+            'models': text_models,
+            'total_count': len(text_models),
+            'inference_profiles_included': True,
+            'embedding_models_filtered': True
         })
         
     except Exception as e:

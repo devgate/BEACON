@@ -155,22 +155,78 @@ body {
   margin-top: 60px; /* 고정 헤더를 위한 마진 */
 }
 
-/* Sidebar - 고정 포지션 */
+/* Sidebar - Enhanced with Glass Morphism */
 .sidebar {
-  width: 280px;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  border-right: 1px solid rgba(100, 116, 139, 0.3);
-  padding: 16px;
+  width: 320px;
+  background: linear-gradient(180deg, 
+    rgba(30, 41, 59, 0.95) 0%, 
+    rgba(15, 23, 42, 0.98) 50%,
+    rgba(15, 23, 42, 0.99) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid rgba(100, 116, 139, 0.2);
+  border-left: 1px solid rgba(0, 212, 255, 0.1);
+  padding: 24px 20px;
   overflow-y: auto;
-  height: 100%; /* 부모 컨테이너 전체 높이 */
-  flex-shrink: 0; /* 사이드바 크기 고정 */
-  scroll-behavior: smooth; /* 부드러운 스크롤 */
-  position: relative; /* 레이아웃에서 고정 */
+  height: 100%;
+  flex-shrink: 0;
+  scroll-behavior: smooth;
+  position: relative;
+  box-shadow: 
+    inset 1px 1px 0 rgba(255, 255, 255, 0.1),
+    4px 0 20px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(0, 212, 255, 0.3) 50%, 
+    transparent 100%);
+  opacity: 0.8;
+}
+
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(180deg, 
+    rgba(0, 212, 255, 0.6) 0%,
+    rgba(0, 212, 255, 0.2) 50%,
+    transparent 100%);
 }
 
 .sidebar-section {
-  margin-bottom: 30px;
-  flex-shrink: 0; /* 섹션이 압축되지 않도록 */
+  margin-bottom: 32px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sidebar-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Enhanced section separators */
+.sidebar-section:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: -16px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%,
+    rgba(100, 116, 139, 0.3) 20%,
+    rgba(100, 116, 139, 0.1) 80%,
+    transparent 100%);
 }
 
 /* 사이드바 섹션들이 적절히 배치되도록 - flex 제거 */
@@ -1228,24 +1284,31 @@ body {
   margin-right: 8px;
 }
 
-/* 반응형 디자인 - 모바일 최적화 */
+/* Enhanced Mobile Responsiveness */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 300px;
+  }
+}
+
 @media (max-width: 768px) {
   .main-container {
-    flex-direction: column;
-    height: calc(100vh - 60px);
+    position: relative;
   }
   
-  .sidebar {
-    width: 100%;
-    max-height: 30vh;
-    border-right: none;
-    border-bottom: 1px solid #4a5568;
-    position: relative;
+  .sidebar:not(.mobile) {
+    width: 300px;
+  }
+  
+  .sidebar.mobile {
+    width: 320px;
+    height: calc(100vh - 60px);
   }
   
   .chat-area {
     flex: 1;
     min-height: 0;
+    margin-left: 0;
   }
   
   .welcome-modes {
@@ -1256,51 +1319,163 @@ body {
   .message-content {
     max-width: 90%;
   }
+  
+  /* Mobile overlay for sidebar */
+  .sidebar.mobile:not(.collapsed)::before {
+    content: '';
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    backdrop-filter: blur(4px);
+  }
 }
 
 @media (max-width: 480px) {
   .sidebar {
-    padding: 15px;
-    max-height: 25vh;
+    padding: 16px;
+  }
+  
+  .sidebar.mobile {
+    width: 100vw;
+    padding: 20px 16px;
+  }
+  
+  .sidebar-toggle-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    top: 68px;
+    left: 12px;
   }
   
   .chat-messages {
-    padding: 15px;
+    padding: 16px;
   }
   
   .chat-input-container {
-    padding: 15px;
+    padding: 16px;
   }
   
   .message-content {
     max-width: 95%;
-    padding: 10px 14px;
-    font-size: 13px;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  
+  .source-display {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  
+  .source-icon-wrapper {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .source-icon {
+    font-size: 16px;
+  }
+  
+  .source-name {
+    font-size: 14px;
+  }
+  
+  .source-description {
+    font-size: 12px;
   }
 }
 
-/* 접근성 개선 - WCAG 2.1 AA 준수 */
+/* Enhanced Accessibility - WCAG 2.1 AA Compliance */
 .sidebar-section h3,
 .category-name,
-.nav-tab {
+.nav-tab,
+.source-header h4,
+.model-header h4 {
   font-size: 16px; /* 최소 폰트 크기 14px 이상 */
 }
 
-/* 키보드 내비게이션 지원 */
+/* Enhanced Keyboard Navigation */
 .category-item:focus,
 .nav-tab:focus,
 .send-btn:focus,
-.chat-input:focus {
+.chat-input:focus,
+.sidebar-toggle-btn:focus,
+.enhanced-source-select:focus,
+.dropdown-trigger:focus {
+  outline: 3px solid #00d4ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(0, 212, 255, 0.2);
+}
+
+.source-display:focus-within {
   outline: 2px solid #00d4ff;
   outline-offset: 2px;
 }
 
-/* 높은 대비 모드 지원 */
+/* Focus visible for better accessibility */
+.sidebar-toggle-btn:focus-visible,
+.dropdown-trigger:focus-visible {
+  outline: 3px solid #00d4ff;
+  outline-offset: 2px;
+}
+
+/* Skip to content for screen readers */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: #00d4ff;
+  color: #1a202c;
+  padding: 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 1002;
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar-toggle-btn,
+  .dropdown-trigger,
+  .source-display,
+  .source-icon-wrapper,
+  .kb-info-card {
+    transition: none !important;
+    animation: none !important;
+  }
+  
+  .sidebar.mobile {
+    transition: none !important;
+  }
+}
+
+/* High contrast mode support */
 @media (prefers-contrast: high) {
   .sidebar {
     border-right-color: #ffffff;
+    border-left-color: #ffffff;
   }
   
+  .source-section,
+  .dropdown-section {
+    border-color: #ffffff;
+  }
+  
+  .sidebar-toggle-btn {
+    border: 2px solid #ffffff;
+  }
+}
+
+/* Additional high contrast and category styling */
+@media (prefers-contrast: high) {
   .category-item {
     border-color: #ffffff;
   }
@@ -1308,16 +1483,6 @@ body {
   .chat-input-container {
     border-top-color: #ffffff;
   }
-}
-
-/* 애니메이션 감소 모드 지원 */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
-  
-  .scroll-behavior: auto;
 }
 
 /* Enhanced Referenced Documents UI */

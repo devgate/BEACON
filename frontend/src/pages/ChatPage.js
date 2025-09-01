@@ -5,7 +5,7 @@ import ModelSelectorDropdown from '../components/ModelSelectorDropdown';
 import './ChatPage.css';
 import { chatService, bedrockService, documentService } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faComments, faFileAlt, faGlobe, faFile } from '@fortawesome/free-solid-svg-icons';
+import { faComments, faFileAlt, faGlobe, faFile, faBars, faTimes, faCheckCircle, faExclamationCircle } from '@fortawesome/free-solid-svg-icons';
 
 const ChatPage = () => {
   const [messages, setMessages] = useState([]);
@@ -15,12 +15,25 @@ const ChatPage = () => {
   const [selectedSource, setSelectedSource] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [knowledgeBases, setKnowledgeBases] = useState([]);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     loadBedrockHealth();
     loadUploadedFiles();
     loadKnowledgeBases();
+
+    // Mobile detection
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+      if (window.innerWidth <= 768) {
+        setIsSidebarCollapsed(true);
+      }
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
 
     // Listen for custom events when RAG Manager updates knowledge list
     const handleKnowledgeListUpdate = () => {
@@ -35,6 +48,7 @@ const ChatPage = () => {
     }, 30000); // Refresh every 30 seconds
 
     return () => {
+      window.removeEventListener('resize', checkMobile);
       window.removeEventListener('knowledgeListUpdated', handleKnowledgeListUpdate);
       clearInterval(refreshInterval);
     };
@@ -178,10 +192,45 @@ const ChatPage = () => {
     setMessages(prev => [...prev, systemMessage]);
   };
 
+  // 모델이 자동 선택되지 않았을 경우 기본 모델 설정
+  useEffect(() => {
+    if (bedrockHealth?.rag_enabled && !selectedModel) {
+      // 기본 Claude 3 Haiku 모델 ID 설정
+      const defaultModelId = 'anthropic.claude-3-haiku-20240307-v1:0';
+      const defaultModel = {
+        model_id: defaultModelId,
+        name: 'Claude 3 Haiku',
+        provider: 'anthropic'
+      };
+      setSelectedModel(defaultModel);
+    }
+  }, [bedrockHealth, selectedModel]);
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
+  };
+
   return (
     <div className="page-container">
+      {/* Skip Link for Accessibility */}
+      <a href="#main-chat" className="skip-link">
+        Skip to main chat area
+      </a>
+      
+      {/* Mobile Sidebar Toggle */}
+      {isMobile && (
+        <button 
+          className="sidebar-toggle-btn"
+          onClick={toggleSidebar}
+          aria-label={isSidebarCollapsed ? "사이드바 열기" : "사이드바 닫기"}
+          aria-expanded={!isSidebarCollapsed}
+        >
+          <FontAwesomeIcon icon={isSidebarCollapsed ? faBars : faTimes} />
+        </button>
+      )}
+      
       <div className="main-container">
-        <aside className="sidebar">
+        <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''} ${isMobile ? 'mobile' : ''}`}>
           
           <div className="sidebar-section" style={{ marginBottom: '20px' }}>
             <ModelSelectorDropdown
@@ -192,67 +241,117 @@ const ChatPage = () => {
             />
           </div>
           
-          {/* 소스 선택 드롭다운 */}
-          
-          <div className="source-section">
-            <div className="source-header">
-              <h4>Source</h4>
-              <div className="source-status">
-                <FontAwesomeIcon icon={faFileAlt} className="status-icon" />
-                <span className="status-text">
-                  {selectedSource ? (selectedSource.startsWith('kb_') ? 'ChromaDB RAG' : '일반') : '선택 가능'}
-                </span>
-              </div>
-            </div>
-            <div className="source-dropdown-wrapper">
-              <div className="source-trigger">
-                <div className="trigger-content">
-                  <FontAwesomeIcon icon={faFileAlt} className="source-icon" />
-                  <div className="selected-info">
-                    <span className="selected-name">
-                      {selectedSource ? 
-                        (selectedSource.startsWith('kb_') ? 
-                          knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.name || '문서' :
-                          selectedSource.startsWith('doc_') ? 
-                            uploadedFiles.find(f => f.id === selectedSource.replace('doc_', ''))?.file_name || '문서' :
-                            '웹 검색'
-                        ) : 
-                        '소스 선택'
-                      }
-                    </span>
-                    {selectedSource && (
-                      <span className="selected-description">
-                        {selectedSource.startsWith('kb_') ? '문서' : 
-                         selectedSource.startsWith('doc_') ? 'PDF 문서' : '온라인 검색'}
-                      </span>
-                    )}
-                  </div>
+          {/* Enhanced Source Selection with Unified Design */}
+          <div className="sidebar-section">
+            <div className="dropdown-section">
+              <div className="source-header">
+                <h4>소스 선택</h4>
+                <div className={`source-status-info ${selectedSource && selectedSource.startsWith('kb_') ? 'healthy' : 
+                  selectedSource ? 'warning' : 'error'}`}>
+                  <FontAwesomeIcon 
+                    icon={selectedSource && selectedSource.startsWith('kb_') ? faCheckCircle :
+                      selectedSource ? faExclamationCircle : faExclamationCircle} 
+                    className="source-status-icon" 
+                  />
+                  <span className="source-status-text">
+                    {selectedSource ? 
+                      (selectedSource.startsWith('kb_') ? 'RAG 활성' : '일반 대화') : 
+                      '선택 안됨'
+                    }
+                  </span>
                 </div>
               </div>
-              <select 
-                className="source-select"
-                value={selectedSource}
-                onChange={(e) => setSelectedSource(e.target.value)}
-              >
-                <option value="">일반 대화 (RAG 사용 안함)</option>
-                <optgroup label="📚 지식 베이스 (ChromaDB RAG)">
-                  {knowledgeBases.length > 0 ? (
-                    knowledgeBases.map(kb => (
-                      <option key={kb.id} value={`kb_${kb.id}`}>
-                        🔍 {kb.name} ({kb.document_count}개 문서)
-                      </option>
-                    ))
-                  ) : (
-                    <option value="" disabled>지식 베이스가 없습니다</option>
-                  )}
-                </optgroup>
-              </select>
+              
+              <div className="source-selector-wrapper">
+                <div className="source-trigger">
+                  <div className="trigger-content">
+                    <FontAwesomeIcon 
+                      icon={selectedSource ? 
+                        (selectedSource.startsWith('kb_') ? faFileAlt : faGlobe) : 
+                        faFile
+                      } 
+                      className="source-icon" 
+                    />
+                    <div className="selected-info">
+                      <span className="selected-name">
+                        {selectedSource ? 
+                          (selectedSource.startsWith('kb_') ? 
+                            knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.name || '지식 베이스' :
+                            '일반 대화 (RAG 미사용)'
+                          ) : 
+                          '소스를 선택하세요'
+                        }
+                      </span>
+                      <span className="selected-description">
+                        {selectedSource ?
+                          (selectedSource.startsWith('kb_') ?
+                            `${knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.document_count || 0}개 문서` :
+                            'RAG 없는 AI 대화'
+                          ) :
+                          '원하는 소스를 선택하세요'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <select 
+                  className="source-select"
+                  value={selectedSource}
+                  onChange={(e) => setSelectedSource(e.target.value)}
+                  aria-label="지식 소스 선택"
+                >
+                  <option value="">💬 일반 대화 (RAG 미사용)</option>
+                  <optgroup label="📚 지식 베이스">
+                    {knowledgeBases.length > 0 ? (
+                      knowledgeBases.map(kb => (
+                        <option key={kb.id} value={`kb_${kb.id}`}>
+                          📖 {kb.name} ({kb.document_count}개 문서)
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>지식 베이스가 없습니다</option>
+                    )}
+                  </optgroup>
+                </select>
+              </div>
+              
+              {/* Knowledge Base Info Card */}
+              {selectedSource && selectedSource.startsWith('kb_') && (
+                <div className="kb-info-card">
+                  {(() => {
+                    const kb = knowledgeBases.find(k => k.id === selectedSource.replace('kb_', ''));
+                    return kb ? (
+                      <>
+                        <div className="kb-info-header">
+                          <FontAwesomeIcon icon={faFileAlt} />
+                          <span>활성 지식 베이스</span>
+                        </div>
+                        <div className="kb-details">
+                          <div className="kb-detail-item">
+                            <span className="label">이름:</span>
+                            <span className="value">{kb.name}</span>
+                          </div>
+                          <div className="kb-detail-item">
+                            <span className="label">문서:</span>
+                            <span className="value">{kb.document_count}개</span>
+                          </div>
+                          <div className="kb-detail-item">
+                            <span className="label">상태:</span>
+                            <span className={`value status ${kb.status}`}>{kb.status === 'active' ? '활성' : kb.status}</span>
+                          </div>
+                        </div>
+                      </>
+                    ) : null;
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 
         </aside>
 
-        <main className="chat-area">
+        <main id="main-chat" className="chat-area" role="main" aria-label="채팅 영역">
           {messages.length === 0 ? (
             <div className="chat-welcome">
               <h1>안녕하세요! AI 어시스턴트입니다</h1>
