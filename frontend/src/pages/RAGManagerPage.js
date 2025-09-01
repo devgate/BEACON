@@ -99,6 +99,8 @@ const RAGManagerPage = () => {
             onSettingsChange={ragHandlers.handleKBSettingsChange}
             onChunkingSettingsChange={ragManager.handleChunkingSettingsChange}
             setNotification={ragManager.setNotification}
+            onTabSwitch={(tab) => ragManager.setActiveDocTab(tab)}
+            onReprocessingStatusUpdate={ragHandlers.handleReprocessingStatusUpdate}
           />
         );
 

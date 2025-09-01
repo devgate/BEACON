@@ -440,6 +440,197 @@ class ChromaService:
             logger.error(f"Failed to list documents: {str(e)}")
             return {}
     
+    def sync_documents_for_kb(self, index_id: str) -> List[Dict]:
+        """
+        Sync documents from ChromaDB for a specific knowledge base
+        
+        Args:
+            index_id: Knowledge base ID
+            
+        Returns:
+            List of document dictionaries
+        """
+        try:
+            collection_name = index_id  # Use index_id directly as collection name
+            documents = []
+            
+            try:
+                collection = self.client.get_collection(collection_name)
+                results = collection.get(include=["metadatas", "documents"])
+                
+                if results["ids"]:
+                    # Group by document_id to avoid duplicates
+                    doc_groups = {}
+                    for i, chunk_id in enumerate(results["ids"]):
+                        metadata = results["metadatas"][i]
+                        doc_id = metadata.get("document_id", chunk_id.split("_chunk_")[0])
+                        
+                        if doc_id not in doc_groups:
+                            doc_groups[doc_id] = {
+                                "id": doc_id,
+                                "title": metadata.get("document_name", metadata.get("original_filename", "Unknown")),
+                                "file_path": metadata.get("file_path"),
+                                "file_size": metadata.get("file_size", 0),
+                                "uploaded_at": metadata.get("created_at", datetime.now().isoformat()),
+                                "index_id": index_id,
+                                "knowledge_base_id": index_id,
+                                "status": "Completed",
+                                "chunk_count": 0,
+                                "chunk_strategy": metadata.get("chunk_strategy", "sentence"),
+                                "chunk_size": metadata.get("chunk_size", 512),
+                                "chunk_overlap": metadata.get("chunk_overlap", 50),
+                                "last_reprocessed": metadata.get("reprocessed_at")
+                            }
+                        
+                        doc_groups[doc_id]["chunk_count"] += 1
+                    
+                    documents = list(doc_groups.values())
+                    logger.info(f"Synced {len(documents)} documents from ChromaDB for KB {index_id}")
+                
+            except Exception as e:
+                logger.warning(f"Collection {collection_name} not found or empty: {e}")
+            
+            return documents
+            
+        except Exception as e:
+            logger.error(f"Failed to sync documents for KB {index_id}: {e}")
+            return []
+    
+    def delete_collection_for_kb(self, index_id: str) -> bool:
+        """
+        Delete ChromaDB collection for a knowledge base
+        
+        Args:
+            index_id: Knowledge base ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            collection_name = index_id  # Use index_id directly as collection name
+            self.client.delete_collection(collection_name)
+            
+            # Remove from collections cache
+            if index_id in self.collections:
+                del self.collections[index_id]
+                
+            logger.info(f"Deleted collection {collection_name}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to delete collection for KB {index_id}: {e}")
+            return False
+    
+    def create_collection_for_kb(self, index_id: str) -> bool:
+        """
+        Create ChromaDB collection for a knowledge base
+        
+        Args:
+            index_id: Knowledge base ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            collection_name = index_id  # Use index_id directly as collection name
+            collection = self.client.create_collection(
+                name=collection_name,
+                metadata={"index_id": index_id, "created_at": datetime.now().isoformat()}
+            )
+            
+            # Add to collections cache
+            self.collections[index_id] = collection
+            
+            logger.info(f"Created collection {collection_name}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to create collection for KB {index_id}: {e}")
+            return False
+    
+    def extract_document_content(self, index_id: str, doc_id: str) -> str:
+        """
+        Extract original document content from ChromaDB chunks
+        
+        Args:
+            index_id: Knowledge base ID
+            doc_id: Document ID
+            
+        Returns:
+            Combined document content from all chunks
+        """
+        try:
+            collection_name = index_id  # Use index_id directly as collection name
+            collection = self.client.get_collection(collection_name)
+            
+            # Get all chunks for this document, ordered by chunk_index
+            results = collection.get(
+                where={"document_id": doc_id},
+                include=["documents", "metadatas"]
+            )
+            
+            if not results["documents"]:
+                logger.warning(f"No chunks found for document {doc_id} in collection {collection_name}")
+                return ""
+            
+            # Sort chunks by chunk_index if available
+            chunks_data = list(zip(results["documents"], results["metadatas"]))
+            chunks_data.sort(key=lambda x: x[1].get("chunk_index", 0))
+            
+            # Combine all chunk texts
+            combined_content = []
+            for chunk_text, metadata in chunks_data:
+                combined_content.append(chunk_text.strip())
+            
+            # Join with double newlines to preserve structure
+            content = "\n\n".join(combined_content)
+            logger.info(f"Extracted {len(content)} characters from {len(chunks_data)} chunks for document {doc_id}")
+            
+            return content
+            
+        except Exception as e:
+            logger.error(f"Failed to extract content for document {doc_id} from collection {collection_name}: {e}")
+            return ""
+    
+    def get_document_metadata(self, index_id: str, doc_id: str) -> Dict:
+        """
+        Get document metadata from ChromaDB
+        
+        Args:
+            index_id: Knowledge base ID
+            doc_id: Document ID
+            
+        Returns:
+            Document metadata dictionary
+        """
+        try:
+            collection_name = index_id  # Use index_id directly as collection name
+            collection = self.client.get_collection(collection_name)
+            
+            results = collection.get(
+                where={"document_id": doc_id},
+                include=["metadatas"],
+                limit=1
+            )
+            
+            if results["metadatas"]:
+                metadata = results["metadatas"][0]
+                return {
+                    "title": metadata.get("document_name", metadata.get("original_filename", "Unknown")),
+                    "file_path": metadata.get("file_path"),
+                    "file_size": metadata.get("file_size", 0),
+                    "created_at": metadata.get("created_at"),
+                    "chunk_strategy": metadata.get("chunk_strategy", "sentence"),
+                    "chunk_size": metadata.get("chunk_size", 512),
+                    "chunk_overlap": metadata.get("chunk_overlap", 50)
+                }
+            
+            return {}
+            
+        except Exception as e:
+            logger.error(f"Failed to get metadata for document {doc_id}: {e}")
+            return {}
+
     def get_collection_stats(self) -> Dict[str, Any]:
         """
         Get statistics about all collections

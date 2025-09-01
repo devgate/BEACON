@@ -19,13 +19,15 @@ import {
   faExpand
 } from '@fortawesome/free-solid-svg-icons';
 import { chunkBySentence, chunkByParagraph, chunkByFixedSize, chunkBySemantic } from '../../services/chunkingService';
+import { documentService } from '../../services/api';
 
 const ChunkingStrategy = ({ 
   strategy, 
   onStrategyChange, 
   selectedIndexId,
   previewText = null,
-  disabled = false 
+  disabled = false,
+  onTabSwitch = null
 }) => {
   // Available chunking strategies
   const strategies = [
@@ -84,6 +86,8 @@ const ChunkingStrategy = ({
   const [showFullPreview, setShowFullPreview] = useState(false);
   const [isRealTimePreview, setIsRealTimePreview] = useState(true);
   const [previewMode, setPreviewMode] = useState('sample'); // 'sample' | 'document'
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   // Load saved configuration and available documents
   useEffect(() => {
@@ -97,6 +101,7 @@ const ChunkingStrategy = ({
         setSelectedStrategy(config.strategy);
         setChunkSize(config.chunkSize);
         setOverlap(config.overlap);
+        setHasChanges(false); // Reset changes flag when loading saved config
         console.log('⚙️ Loaded saved config:', config);
       }
     }
@@ -105,6 +110,33 @@ const ChunkingStrategy = ({
     console.log('🔄 About to call loadAvailableDocuments...');
     loadAvailableDocuments();
   }, [selectedIndexId]);
+
+  // Track changes to strategy, size, or overlap
+  useEffect(() => {
+    if (selectedIndexId) {
+      const savedConfig = localStorage.getItem(`chunking_config_${selectedIndexId}`);
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig);
+        const hasConfigChanges = (
+          config.strategy !== selectedStrategy ||
+          config.chunkSize !== chunkSize ||
+          config.overlap !== overlap
+        );
+        setHasChanges(hasConfigChanges);
+      } else {
+        // If no saved config, consider any non-default values as changes
+        const defaultStrategy = 'sentence';
+        const defaultChunkSize = 512;
+        const defaultOverlap = 50;
+        const hasConfigChanges = (
+          selectedStrategy !== defaultStrategy ||
+          chunkSize !== defaultChunkSize ||
+          overlap !== defaultOverlap
+        );
+        setHasChanges(hasConfigChanges);
+      }
+    }
+  }, [selectedStrategy, chunkSize, overlap, selectedIndexId]);
 
   // Add additional useEffect to load documents on component mount
   useEffect(() => {
@@ -382,6 +414,67 @@ const ChunkingStrategy = ({
     setChunkingMetrics(null);
     setShowFullPreview(false);
   };
+
+  const handleApplyStrategy = async () => {
+    if (!selectedIndexId) {
+      alert('지식 베이스를 선택해주세요.');
+      return;
+    }
+    
+    if (!hasChanges) {
+      alert('변경된 설정이 없습니다.');
+      return;
+    }
+
+    // 확인 다이얼로그 없이 바로 적용
+    try {
+      setIsProcessing(true);
+
+      console.log('Applying chunking strategy:', {
+        strategy: selectedStrategy,
+        chunkSize: chunkSize,
+        overlap: overlap
+      });
+
+      // Call the reprocess API
+      const response = await documentService.reprocessKnowledgeBaseChunks(selectedIndexId, {
+        strategy: selectedStrategy,
+        chunkSize: chunkSize,
+        overlap: overlap
+      });
+
+      console.log('Reprocess response:', response);
+
+      // Save the new configuration
+      updateConfig(selectedStrategy, chunkSize, overlap);
+      setHasChanges(false);
+
+      // Switch to File Manager tab to show progress
+      if (onTabSwitch) {
+        onTabSwitch('file-manager');
+      }
+
+      // Show success message
+      alert(`${response.processed_count}개 문서가 성공적으로 재처리되었습니다.`);
+
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('documentsReprocessed', {
+        detail: {
+          indexId: selectedIndexId,
+          processedCount: response.processed_count,
+          failedCount: response.failed_count,
+          totalChunks: response.total_chunks
+        }
+      }));
+
+    } catch (error) {
+      console.error('Failed to reprocess documents:', error);
+      alert(`문서 재처리 중 오류가 발생했습니다: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
 
   const currentStrategy = strategies.find(s => s.id === selectedStrategy);
 
@@ -750,6 +843,37 @@ const ChunkingStrategy = ({
           <span>청크 크기와 오버랩은 검색 정확도와 처리 속도에 영향을 미칩니다</span>
         </div>
       </div>
+
+      {/* Apply Strategy Button */}
+      {selectedIndexId && (
+        <div className="apply-strategy-section">
+          <div className="apply-info">
+            {hasChanges ? (
+              <span className="changes-indicator">⚠️ 변경된 설정이 있습니다</span>
+            ) : (
+              <span className="no-changes-indicator">✅ 설정이 저장되어 있습니다</span>
+            )}
+          </div>
+          <button
+            className={`apply-strategy-btn ${hasChanges ? 'has-changes' : 'no-changes'}`}
+            onClick={handleApplyStrategy}
+            disabled={isProcessing || !hasChanges}
+          >
+            {isProcessing ? (
+              <>
+                <FontAwesomeIcon icon={faRefresh} spin className="btn-icon" />
+                재처리 중...
+              </>
+            ) : (
+              <>
+                <FontAwesomeIcon icon={faMagic} className="btn-icon" />
+                청킹 전략 적용
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
     </div>
   );
 };

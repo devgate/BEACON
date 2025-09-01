@@ -473,6 +473,50 @@ export const useRAGHandlers = (ragManager) => {
     }
   };
 
+  // Handle reprocessing status updates from KnowledgeBaseSettings
+  const handleReprocessingStatusUpdate = (indexId, documentsWithProgress) => {
+    if (!indexId || !documentsWithProgress || !Array.isArray(documentsWithProgress)) {
+      return;
+    }
+
+    console.log(`Updating reprocessing status for KB ${indexId}:`, documentsWithProgress);
+
+    // Update documents with reprocessing progress information
+    setDocuments(prevDocuments => {
+      return prevDocuments.map(doc => {
+        // Find the corresponding document with progress info
+        const progressDoc = documentsWithProgress.find(pDoc => 
+          pDoc.id === doc.id || pDoc.id === String(doc.id)
+        );
+
+        if (progressDoc) {
+          // Update document with reprocessing progress
+          return {
+            ...doc,
+            status: progressDoc.status || doc.status,
+            reprocessing_progress: progressDoc.reprocessing_progress || progressDoc.displayProgress || 0,
+            reprocessing_stage: progressDoc.reprocessing_stage || progressDoc.displayStage || 'Ready',
+            chunk_count: progressDoc.chunk_count || doc.chunk_count,
+            last_reprocessed: progressDoc.last_reprocessed || doc.last_reprocessed
+          };
+        }
+
+        return doc;
+      });
+    });
+
+    // Also trigger a data reload after a delay to ensure we get the final state
+    if (documentsWithProgress.some(doc => doc.status === 'Completed')) {
+      setTimeout(() => {
+        if (selectedIndexId === indexId) {
+          loadDocumentsByIndex(indexId);
+        } else {
+          loadAllDocuments();
+        }
+      }, 1000);
+    }
+  };
+
   return {
     handleMultipleFiles,
     handleFileInputChange,
@@ -494,6 +538,7 @@ export const useRAGHandlers = (ragManager) => {
     handleSaveEditKB,
     handleDeleteKB,
     handleKBSettingsChange,
+    handleReprocessingStatusUpdate,
     formatFileSize,
     formatDate
   };

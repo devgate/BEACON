@@ -24,6 +24,7 @@ const ChunkingStrategyConfig = ({
     strategyId: selectedStrategy?.id,
     strategyName: selectedStrategy?.name
   });
+
   const handleQuickStrategyTest = (strategy) => {
     onStrategyChange(strategy.id);
     setNotification({
@@ -31,6 +32,7 @@ const ChunkingStrategyConfig = ({
       type: 'info'
     });
   };
+
 
   return (
     <div className="settings-section">
@@ -155,6 +157,7 @@ const ChunkingStrategyConfig = ({
               </div>
             </div>
           )}
+
         </>
       )}
     </div>

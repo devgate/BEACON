@@ -393,16 +393,34 @@
 
 
 /* Document Status Styles */
+.status-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
 .document-status {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  text-align: center;
   border: 1px solid transparent;
+  position: relative;
+}
+
+.document-status .spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .status-completed {
@@ -427,6 +445,38 @@
   background-color: rgba(148, 163, 184, 0.15);
   color: #94a3b8;
   border-color: rgba(148, 163, 184, 0.3);
+}
+
+/* Status Progress Bar */
+.status-progress {
+  width: 100px;
+  height: 2px;
+  background: rgba(71, 85, 105, 0.3);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  border-radius: 1px;
+  animation: progress-slide 2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(-100%); }
 }
 
 /* Responsive Design */
@@ -493,5 +543,127 @@
   .action-btn {
     padding: 4px 6px;
     font-size: 11px;
+  }
+}
+
+/* Enhanced Progress Tracking Styles */
+.reprocessing-details {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-container .progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(71, 85, 105, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-container .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00d4ff, #0ea5e9);
+  border-radius: 2px;
+  transition: width 0.3s ease-in-out;
+  animation: none;
+}
+
+.progress-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: #00d4ff;
+  min-width: 30px;
+  text-align: right;
+}
+
+.progress-stage {
+  font-size: 10px;
+  color: #94a3b8;
+  font-style: italic;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Indeterminate animation for regular processing */
+.progress-fill.indeterminate {
+  width: 40% !important;
+  animation: progress-slide 2s ease-in-out infinite;
+}
+
+/* Different progress colors based on stage */
+.reprocessing-details .progress-fill[style*="25"] {
+  background: linear-gradient(90deg, #fbbf24, #f59e0b); /* Content extraction - yellow */
+}
+
+.reprocessing-details .progress-fill[style*="50"] {
+  background: linear-gradient(90deg, #0ea5e9, #0284c7); /* Chunking - blue */
+}
+
+.reprocessing-details .progress-fill[style*="75"] {
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed); /* Embedding - purple */
+}
+
+.reprocessing-details .progress-fill[style*="100"] {
+  background: linear-gradient(90deg, #10b981, #059669); /* Complete - green */
+}
+
+/* Status container enhancements */
+.status-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 140px;
+}
+
+.document-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+/* Improved spinning animation */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Mobile responsive progress display */
+@media (max-width: 768px) {
+  .reprocessing-details {
+    min-width: 100px;
+  }
+  
+  .progress-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+  
+  .progress-text {
+    text-align: center;
+    min-width: unset;
+  }
+  
+  .progress-stage {
+    font-size: 9px;
   }
 }

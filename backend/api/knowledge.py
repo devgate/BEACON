@@ -455,3 +455,394 @@ def _process_with_rag_kb(content, filename, doc_info, index_id, file_path):
     except Exception as e:
         logger.error(f"Failed to add document to legacy RAG: {e}")
         return 0
+
+@knowledge_bp.route('/api/knowledge/<index_id>/reprocess-chunks', methods=['POST'])
+def reprocess_knowledge_base_chunks(index_id):
+    """
+    Reprocess all documents in a knowledge base with new chunking strategy
+    """
+    try:
+        data = request.json
+        chunk_strategy = data.get('chunk_strategy', 'sentence')
+        chunk_size = int(data.get('chunk_size', 512))
+        chunk_overlap = int(data.get('chunk_overlap', 50))
+        
+        logger.info(f"Starting reprocess for KB {index_id} with strategy: {chunk_strategy}, size: {chunk_size}, overlap: {chunk_overlap}")
+        
+        # Get all documents in this knowledge base (check both index_id and knowledge_base_id)
+        kb_documents = [d for d in documents if (d.get('index_id') == index_id or d.get('knowledge_base_id') == index_id)]
+        
+        # Log for debugging
+        logger.info(f"Found {len(kb_documents)} documents for KB {index_id}")
+        logger.info(f"Total documents in memory: {len(documents)}")
+        if documents:
+            logger.info(f"Sample document keys: {list(documents[0].keys())}")
+            logger.info(f"Sample document index_id: {documents[0].get('index_id')}")
+            logger.info(f"Sample document knowledge_base_id: {documents[0].get('knowledge_base_id')}")
+        
+        # If no documents found in memory, try to sync from ChromaDB
+        if not kb_documents and CHROMA_ENABLED and chroma_service:
+            logger.info(f"No documents found in memory for KB {index_id}, trying to sync from ChromaDB")
+            try:
+                # Sync documents from ChromaDB for this knowledge base
+                synced_docs = chroma_service.sync_documents_for_kb(index_id)
+                if synced_docs:
+                    documents.extend(synced_docs)
+                    kb_documents = [d for d in documents if (d.get('index_id') == index_id or d.get('knowledge_base_id') == index_id)]
+                    logger.info(f"Synced {len(synced_docs)} documents from ChromaDB")
+            except Exception as sync_error:
+                logger.warning(f"Failed to sync documents from ChromaDB: {sync_error}")
+        
+        if not kb_documents:
+            return jsonify({'error': 'No documents found in knowledge base'}), 404
+        
+        # First, extract content from all documents BEFORE clearing ChromaDB
+        logger.info(f"Extracting content from {len(kb_documents)} documents before clearing ChromaDB")
+        documents_with_content = []
+        
+        for doc in kb_documents:
+            file_path = doc.get('file_path')
+            content = ""
+            
+            # Try to get content from file first
+            if file_path and os.path.exists(file_path):
+                try:
+                    if file_path.lower().endswith('.pdf'):
+                        with open(file_path, 'rb') as pdf_file:
+                            pdf_reader = PyPDF2.PdfReader(pdf_file)
+                            for page in pdf_reader.pages:
+                                content += page.extract_text() + "\n"
+                    elif file_path.lower().endswith(('.txt', '.md')):
+                        with open(file_path, 'r', encoding='utf-8') as txt_file:
+                            content = txt_file.read()
+                    logger.info(f"Extracted {len(content)} characters from file for document {doc['id']}")
+                except Exception as file_error:
+                    logger.warning(f"Failed to extract from file {file_path}: {file_error}")
+            
+            # If file extraction failed, try ChromaDB BEFORE clearing
+            if not content.strip() and CHROMA_ENABLED and chroma_service:
+                try:
+                    content = chroma_service.extract_document_content(index_id, doc['id'])
+                    if content.strip():
+                        logger.info(f"Extracted {len(content)} characters from ChromaDB for document {doc['id']}")
+                        # Also get and update metadata
+                        chromadb_metadata = chroma_service.get_document_metadata(index_id, doc['id'])
+                        if chromadb_metadata:
+                            doc.update(chromadb_metadata)
+                except Exception as extract_error:
+                    logger.warning(f"Failed to extract content from ChromaDB for document {doc['id']}: {extract_error}")
+            
+            # Store document with its content for later processing
+            doc_with_content = doc.copy()
+            doc_with_content['extracted_content'] = content
+            documents_with_content.append(doc_with_content)
+            
+            if not content.strip():
+                logger.warning(f"No content found for document {doc['id']} - will be marked as failed")
+        
+        # Now clear the ChromaDB collection for this knowledge base
+        if CHROMA_ENABLED and chroma_service:
+            logger.info(f"Clearing ChromaDB collection for KB: {index_id}")
+            try:
+                # Try to delete and recreate the collection
+                if hasattr(chroma_service, 'delete_collection_for_kb'):
+                    chroma_service.delete_collection_for_kb(index_id)
+                    chroma_service.create_collection_for_kb(index_id)
+                    logger.info(f"Successfully cleared ChromaDB collection for KB: {index_id}")
+                else:
+                    # Fallback: Delete individual documents
+                    logger.info(f"Using fallback method to clear documents for KB: {index_id}")
+                    for doc in kb_documents:
+                        document_id = f"kb_{index_id}_doc_{doc['id']}"
+                        try:
+                            if hasattr(chroma_service, 'delete_document'):
+                                chroma_service.delete_document(document_id)
+                            elif hasattr(chroma_service.collection, 'delete'):
+                                chroma_service.collection.delete(ids=[document_id])
+                            logger.debug(f"Deleted document {document_id} from ChromaDB")
+                        except Exception as delete_error:
+                            logger.warning(f"Could not delete document {document_id}: {delete_error}")
+            except Exception as clear_error:
+                logger.warning(f"Failed to clear ChromaDB collection for KB {index_id}: {clear_error}")
+                # Continue with reprocessing even if clearing fails
+        
+        # Track processing results
+        processed_count = 0
+        failed_count = 0
+        total_chunks = 0
+        
+        # Update all documents to reprocessing status with initial progress
+        for doc_with_content in documents_with_content:
+            doc_with_content['status'] = 'Reprocessing'
+            doc_with_content['reprocessing_progress'] = 0
+            doc_with_content['reprocessing_stage'] = 'Starting'
+        
+        # Process each document with new chunking strategy using pre-extracted content
+        total_docs = len(documents_with_content)
+        for idx, doc_with_content in enumerate(documents_with_content):
+            doc = doc_with_content  # Work with the copy that has extracted_content
+            try:
+                # Stage 1: Content Extraction (0-25%) - Use pre-extracted content
+                doc['reprocessing_progress'] = 0
+                doc['reprocessing_stage'] = 'Extracting content'
+                logger.info(f"Processing document {idx+1}/{total_docs}: {doc['title']} - Stage 1: Using pre-extracted content")
+                
+                # Use the content we extracted before clearing ChromaDB
+                content = doc.get('extracted_content', '')
+                
+                if not content.strip():
+                    logger.error(f"No pre-extracted content available for document {doc['id']}")
+                    doc['status'] = 'Failed'
+                    doc['reprocessing_stage'] = 'Failed - No content available'
+                    doc['reprocessing_progress'] = 0
+                    failed_count += 1
+                    continue
+                
+                # Stage 1 Complete (25%)
+                doc['reprocessing_progress'] = 25
+                doc['reprocessing_stage'] = 'Content extracted'
+                logger.info(f"Document {doc['id']}: Content extraction complete - {len(content)} characters")
+                
+                # Stage 2: Text Chunking (25-50%)
+                doc['reprocessing_progress'] = 25
+                doc['reprocessing_stage'] = 'Creating chunks'
+                logger.info(f"Document {doc['id']}: Stage 2: Chunking with strategy: {chunk_strategy}")
+                chunks = []
+                
+                # Strategy mapping to handle different naming conventions
+                strategy_mapping = {
+                    'sentence': 'sentence',
+                    'by_sentence': 'sentence', 
+                    'paragraph': 'paragraph',
+                    'by_paragraph': 'paragraph',
+                    'title': 'title',
+                    'by_title': 'title',
+                    'token': 'token',
+                    'by_token': 'token',
+                    'fixed': 'fixed',
+                    'semantic': 'semantic',
+                    'sliding': 'sliding'
+                }
+                
+                normalized_strategy = strategy_mapping.get(chunk_strategy, 'sentence')
+                logger.info(f"Normalized strategy: {normalized_strategy}")
+                
+                if DocumentChunker:
+                    if normalized_strategy == 'sentence':
+                        chunks = DocumentChunker.chunk_by_sentences(
+                            content, max_chunk_size=chunk_size, overlap=chunk_overlap
+                        )
+                    elif normalized_strategy == 'paragraph':
+                        chunks = DocumentChunker.chunk_by_paragraphs(
+                            content, max_chunk_size=chunk_size
+                        )
+                    elif normalized_strategy == 'title':
+                        chunks = DocumentChunker.chunk_by_title(
+                            content, max_chunk_size=chunk_size, overlap=chunk_overlap
+                        )
+                    elif normalized_strategy == 'token':
+                        chunks = DocumentChunker.chunk_by_tokens(
+                            content, max_tokens=chunk_size//4, overlap_tokens=chunk_overlap//4
+                        )
+                    else:
+                        logger.warning(f"Unknown strategy {normalized_strategy}, using sentence-based chunking")
+                        chunks = DocumentChunker.chunk_by_sentences(content, chunk_size, chunk_overlap)
+                else:
+                    # Simple fallback chunking
+                    words = content.split()
+                    chunks = []
+                    current_chunk = ""
+                    for word in words:
+                        if len(current_chunk) + len(word) < chunk_size:
+                            current_chunk += word + " "
+                        else:
+                            if current_chunk:
+                                chunks.append(current_chunk.strip())
+                            current_chunk = word + " "
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                
+                # Stage 2 Complete (50%)
+                doc['reprocessing_progress'] = 50
+                doc['reprocessing_stage'] = f'Chunks created ({len(chunks)})'
+                logger.info(f"Document {doc['id']}: Generated {len(chunks)} chunks")
+                
+                # Stage 3: Embedding Generation (50-75%)
+                doc['reprocessing_progress'] = 50
+                doc['reprocessing_stage'] = 'Generating embeddings'
+                logger.info(f"Document {doc['id']}: Stage 3: Generating embeddings for {len(chunks)} chunks")
+                
+                embeddings = generate_embeddings(chunks)
+                
+                # Stage 3 Complete (75%)
+                doc['reprocessing_progress'] = 75
+                doc['reprocessing_stage'] = 'Embeddings generated'
+                logger.info(f"Document {doc['id']}: Embedding generation complete")
+                
+                # Stage 4: ChromaDB Storage (75-100%)
+                doc['reprocessing_progress'] = 75
+                doc['reprocessing_stage'] = 'Storing in database'
+                logger.info(f"Document {doc['id']}: Stage 4: Storing in ChromaDB")
+                
+                # Store in ChromaDB
+                if CHROMA_ENABLED and chroma_service:
+                    document_id = f"kb_{index_id}_doc_{doc['id']}"
+                    success = chroma_service.add_document_to_kb(
+                        chunks=chunks,
+                        embeddings=embeddings,
+                        document_id=document_id,
+                        document_name=doc['title'],
+                        index_id=index_id,
+                        metadata={
+                            'chunk_strategy': chunk_strategy,
+                            'chunk_size': chunk_size,
+                            'chunk_overlap': chunk_overlap,
+                            'reprocessed_at': datetime.now().isoformat(),
+                            'original_filename': doc['title'],
+                            'file_path': doc.get('file_path')
+                        }
+                    )
+                    
+                    if success:
+                        # Stage 4 Complete (100%)
+                        doc['status'] = 'Completed'
+                        doc['reprocessing_progress'] = 100
+                        doc['reprocessing_stage'] = 'Complete'
+                        doc['chunk_count'] = len(chunks)
+                        doc['chunk_strategy'] = chunk_strategy
+                        doc['chunk_size'] = chunk_size
+                        doc['chunk_overlap'] = chunk_overlap
+                        doc['last_reprocessed'] = datetime.now().isoformat()
+                        processed_count += 1
+                        total_chunks += len(chunks)
+                        logger.info(f"Document {doc['id']}: Reprocessing complete - {len(chunks)} chunks stored")
+                    else:
+                        doc['status'] = 'Failed'
+                        doc['reprocessing_stage'] = 'Failed - Storage error'
+                        doc['reprocessing_progress'] = 75
+                        failed_count += 1
+                        logger.error(f"Document {doc['id']}: Failed to store in ChromaDB")
+                else:
+                    # Fallback to legacy RAG if ChromaDB not available
+                    chunks_added = _process_with_rag_kb(
+                        content, doc['title'], doc, index_id, doc.get('file_path')
+                    )
+                    if chunks_added > 0:
+                        doc['status'] = 'Completed'
+                        doc['reprocessing_progress'] = 100
+                        doc['reprocessing_stage'] = 'Complete (Legacy RAG)'
+                        doc['chunk_count'] = chunks_added
+                        processed_count += 1
+                        total_chunks += chunks_added
+                        logger.info(f"Document {doc['id']}: Legacy RAG processing complete - {chunks_added} chunks")
+                    else:
+                        doc['status'] = 'Failed'
+                        doc['reprocessing_stage'] = 'Failed - Legacy RAG error'
+                        doc['reprocessing_progress'] = 75
+                        failed_count += 1
+                        logger.error(f"Document {doc['id']}: Failed to process with legacy RAG")
+                
+            except Exception as e:
+                logger.error(f"Failed to reprocess document {doc['id']}: {e}")
+                doc['status'] = 'Failed'
+                doc['reprocessing_stage'] = f'Failed - {str(e)[:50]}'
+                doc['reprocessing_progress'] = 0
+                failed_count += 1
+        
+        logger.info(f"Reprocessing complete for KB {index_id}: {processed_count} success, {failed_count} failed, {total_chunks} total chunks")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Reprocessed {processed_count} documents successfully',
+            'processed_count': processed_count,
+            'failed_count': failed_count,
+            'total_documents': total_docs,
+            'total_chunks': total_chunks,
+            'chunk_strategy': chunk_strategy,
+            'chunk_size': chunk_size,
+            'chunk_overlap': chunk_overlap,
+            'reprocessing_complete': True,
+            'documents': [{
+                'id': doc['id'],
+                'title': doc['title'],
+                'status': doc['status'],
+                'chunk_count': doc.get('chunk_count', 0),
+                'reprocessing_progress': doc.get('reprocessing_progress', 0),
+                'reprocessing_stage': doc.get('reprocessing_stage', 'Unknown'),
+                'last_reprocessed': doc.get('last_reprocessed'),
+                'chunk_strategy': doc.get('chunk_strategy', chunk_strategy),
+                'chunk_size': doc.get('chunk_size', chunk_size),
+                'chunk_overlap': doc.get('chunk_overlap', chunk_overlap)
+            } for doc in documents_with_content]
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to reprocess knowledge base {index_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@knowledge_bp.route('/api/knowledge/<index_id>/reprocessing-status', methods=['GET'])
+def get_reprocessing_status(index_id):
+    """
+    Get the current reprocessing status for a knowledge base
+    Used for real-time polling during document reprocessing
+    """
+    try:
+        # Get all documents in this knowledge base
+        kb_documents = [d for d in documents if (d.get('index_id') == index_id or d.get('knowledge_base_id') == index_id)]
+        
+        if not kb_documents:
+            return jsonify({'error': 'No documents found in knowledge base'}), 404
+        
+        # Calculate overall progress
+        total_docs = len(kb_documents)
+        completed_docs = len([d for d in kb_documents if d.get('status') == 'Completed'])
+        failed_docs = len([d for d in kb_documents if d.get('status') == 'Failed'])
+        processing_docs = len([d for d in kb_documents if d.get('status') == 'Reprocessing'])
+        
+        # Calculate average progress for reprocessing documents
+        reprocessing_docs = [d for d in kb_documents if d.get('status') == 'Reprocessing']
+        average_progress = 0
+        if reprocessing_docs:
+            total_progress = sum(d.get('reprocessing_progress', 0) for d in reprocessing_docs)
+            average_progress = total_progress / len(reprocessing_docs)
+        
+        # Overall completion percentage
+        overall_progress = ((completed_docs + failed_docs) / total_docs * 100) if total_docs > 0 else 0
+        if processing_docs > 0:
+            # Factor in the progress of currently processing documents
+            overall_progress = ((completed_docs + failed_docs) / total_docs * 100) + (processing_docs / total_docs * average_progress)
+        
+        # Determine current status
+        if completed_docs == total_docs:
+            overall_status = 'Completed'
+        elif failed_docs == total_docs:
+            overall_status = 'Failed'
+        elif processing_docs > 0:
+            overall_status = 'Reprocessing'
+        else:
+            overall_status = 'Ready'
+        
+        return jsonify({
+            'knowledge_base_id': index_id,
+            'overall_status': overall_status,
+            'overall_progress': round(overall_progress, 1),
+            'total_documents': total_docs,
+            'completed_documents': completed_docs,
+            'failed_documents': failed_docs,
+            'processing_documents': processing_docs,
+            'average_processing_progress': round(average_progress, 1),
+            'documents': [{
+                'id': doc['id'],
+                'title': doc['title'],
+                'status': doc['status'],
+                'reprocessing_progress': doc.get('reprocessing_progress', 0),
+                'reprocessing_stage': doc.get('reprocessing_stage', 'Ready'),
+                'chunk_count': doc.get('chunk_count', 0),
+                'last_reprocessed': doc.get('last_reprocessed')
+            } for doc in kb_documents],
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get reprocessing status for KB {index_id}: {e}")
+        return jsonify({'error': str(e)}), 500

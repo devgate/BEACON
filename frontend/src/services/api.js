@@ -152,6 +152,19 @@ export const documentService = {
     return response.data;
   },
 
+  async reprocessKnowledgeBaseChunks(indexId, chunkingSettings) {
+    const response = await api.post(`/knowledge/${indexId}/reprocess-chunks`, {
+      chunk_strategy: chunkingSettings.strategy,
+      chunk_size: chunkingSettings.chunkSize,
+      chunk_overlap: chunkingSettings.overlap
+    });
+    return response.data;
+  },
+
+  async getReprocessingStatus(indexId) {
+    const response = await api.get(`/knowledge/${indexId}/reprocessing-status`);
+    return response.data;
+  },
 
   async getEmbeddingModels() {
     const response = await api.get('/embedding-models');

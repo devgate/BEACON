@@ -1,6 +1,14 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrash, faSync, faDownload } from '@fortawesome/free-solid-svg-icons';
+import { 
+  faTrash, 
+  faSync, 
+  faDownload, 
+  faSpinner,
+  faCheckCircle,
+  faExclamationTriangle,
+  faClock
+} from '@fortawesome/free-solid-svg-icons';
 import './EnhancedFileManager.css';
 
 const DocumentTable = ({ 
@@ -47,17 +55,57 @@ const DocumentTable = ({
               </td>
               <td>{filteredData.length - idx}</td>
               <td>
-                <span className={`document-status ${
-                  doc.status === 'Processing' ? 'status-processing' :
-                  doc.status === 'Success' || doc.status === 'Completed' || !doc.status ? 'status-completed' :
-                  doc.status === 'Failed' || doc.status === 'Error' ? 'status-failed' :
-                  'status-pending'
-                }`}>
-                  {doc.status === 'Processing' ? 'Processing' :
-                   doc.status === 'Success' || doc.status === 'Completed' ? 'Completed' :
-                   doc.status === 'Failed' || doc.status === 'Error' ? 'Failed' :
-                   doc.status || 'Completed'}
-                </span>
+                <div className="status-container">
+                  <span className={`document-status ${
+                    doc.status === 'Processing' || doc.status === 'Reprocessing' ? 'status-processing' :
+                    doc.status === 'Success' || doc.status === 'Completed' || !doc.status ? 'status-completed' :
+                    doc.status === 'Failed' || doc.status === 'Error' ? 'status-failed' :
+                    'status-pending'
+                  }`}>
+                    <FontAwesomeIcon 
+                      icon={
+                        doc.status === 'Processing' || doc.status === 'Reprocessing' ? faSpinner :
+                        doc.status === 'Success' || doc.status === 'Completed' || !doc.status ? faCheckCircle :
+                        doc.status === 'Failed' || doc.status === 'Error' ? faExclamationTriangle :
+                        faClock
+                      }
+                      className={doc.status === 'Processing' || doc.status === 'Reprocessing' ? 'spinning' : ''}
+                    />
+                    {doc.status === 'Processing' ? 'Processing' :
+                     doc.status === 'Reprocessing' ? 'Reprocessing' :
+                     doc.status === 'Success' || doc.status === 'Completed' ? 'Completed' :
+                     doc.status === 'Failed' || doc.status === 'Error' ? 'Failed' :
+                     doc.status || 'Completed'}
+                  </span>
+                  {/* Progress information for reprocessing documents */}
+                  {doc.status === 'Reprocessing' && (
+                    <div className="reprocessing-details">
+                      <div className="progress-container">
+                        <div className="progress-bar">
+                          <div 
+                            className="progress-fill" 
+                            style={{ width: `${doc.reprocessing_progress || 0}%` }}
+                          ></div>
+                        </div>
+                        <span className="progress-text">
+                          {doc.reprocessing_progress || 0}%
+                        </span>
+                      </div>
+                      <div className="progress-stage">
+                        {doc.reprocessing_stage || 'Starting'}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Simple progress bar for regular processing */}
+                  {doc.status === 'Processing' && (
+                    <div className="status-progress">
+                      <div className="progress-bar">
+                        <div className="progress-fill indeterminate"></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </td>
               <td className="file-name" title={doc.name}>{doc.name}</td>
               <td>{typeof doc.size === 'number' ? formatFileSize(doc.size) : doc.size}</td>

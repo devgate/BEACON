@@ -19,6 +19,7 @@ import {
 import EmbeddingModelSelector from './EmbeddingModelSelector';
 import ChunkingStrategyConfig from './ChunkingStrategyConfig';
 import ChunkingPreview from './ChunkingPreview';
+import useReprocessingStatus from '../../hooks/useReprocessingStatus';
 import './KnowledgeBaseSettings.css';
 
 const KnowledgeBaseSettings = ({ 
@@ -26,7 +27,9 @@ const KnowledgeBaseSettings = ({
   selectedIndex,
   onSettingsChange,
   setNotification,
-  onChunkingSettingsChange
+  onChunkingSettingsChange,
+  onTabSwitch,
+  onReprocessingStatusUpdate
 }) => {
   // State for embedding models from API
   const [embeddingModels, setEmbeddingModels] = useState([]);
@@ -54,6 +57,10 @@ const KnowledgeBaseSettings = ({
   const [normalize, setNormalize] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Real-time reprocessing status tracking
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const reprocessingStatus = useReprocessingStatus(selectedIndexId, isReprocessing);
 
   // Initialize settings with backend defaults used in document upload
   const initializeDefaultSettings = () => {
@@ -138,6 +145,43 @@ const KnowledgeBaseSettings = ({
       }
     }
   }, [embeddingModels, collectionMetadata, embeddingModel]);
+
+  // Monitor reprocessing completion
+  useEffect(() => {
+    if (reprocessingStatus.isComplete || reprocessingStatus.isFailed) {
+      console.log('Reprocessing completed, stopping polling');
+      setIsReprocessing(false);
+      
+      // Reload collection metadata after reprocessing completes
+      if (selectedIndexId && reprocessingStatus.isComplete) {
+        setTimeout(() => {
+          loadCollectionMetadata();
+        }, 2000); // Small delay to ensure backend has finished updating
+      }
+      
+      // Show completion notification
+      if (reprocessingStatus.isComplete) {
+        const summary = reprocessingStatus.getProcessingSummary();
+        setNotification({
+          message: `재처리 완료: ${summary.completed}개 성공, ${summary.failed}개 실패`,
+          type: summary.failed > 0 ? 'warning' : 'success'
+        });
+      } else if (reprocessingStatus.isFailed) {
+        setNotification({
+          message: '재처리 중 오류가 발생했습니다. 다시 시도해주세요.',
+          type: 'error'
+        });
+      }
+    }
+  }, [reprocessingStatus.isComplete, reprocessingStatus.isFailed, selectedIndexId]);
+
+  // Pass reprocessing status updates to parent component
+  useEffect(() => {
+    if (onReprocessingStatusUpdate && reprocessingStatus.status) {
+      const documentsWithProgress = reprocessingStatus.getDocumentsWithProgress();
+      onReprocessingStatusUpdate(selectedIndexId, documentsWithProgress);
+    }
+  }, [reprocessingStatus.status, onReprocessingStatusUpdate, selectedIndexId]);
 
   const fetchEmbeddingModels = async () => {
     setLoadingModels(true);
@@ -868,7 +912,7 @@ const KnowledgeBaseSettings = ({
         timestamp: new Date().toISOString()
       };
 
-      // Save to localStorage (in production, this would be an API call)
+      // Save to localStorage
       localStorage.setItem(`kb_settings_${selectedIndexId}`, JSON.stringify(settings));
 
       // Notify parent component
@@ -876,16 +920,52 @@ const KnowledgeBaseSettings = ({
         onSettingsChange(settings);
       }
 
+      // Call the reprocess API to apply new settings
+      console.log('Applying chunking strategy with settings:', {
+        strategy: chunkingStrategy.id,
+        chunkSize: chunkSize,
+        overlap: chunkOverlap
+      });
+
+      const response = await documentService.reprocessKnowledgeBaseChunks(selectedIndexId, {
+        strategy: chunkingStrategy.id,
+        chunkSize: chunkSize,
+        overlap: chunkOverlap
+      });
+
+      console.log('Reprocess response:', response);
+
       setHasChanges(false);
+
+      // Start real-time reprocessing status tracking
+      setIsReprocessing(true);
+      console.log('Starting reprocessing status tracking for KB:', selectedIndexId);
+
+      // Switch to File Manager tab to show progress
+      if (onTabSwitch) {
+        onTabSwitch('file-manager');
+      }
+
+      // Show success message
       setNotification({
-        message: '설정이 성공적으로 저장되었습니다.',
+        message: `설정이 저장되고 ${response.processed_count}개 문서가 성공적으로 재처리되었습니다.`,
         type: 'success'
       });
 
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('documentsReprocessed', {
+        detail: {
+          indexId: selectedIndexId,
+          processedCount: response.processed_count,
+          failedCount: response.failed_count,
+          totalChunks: response.total_chunks
+        }
+      }));
+
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      console.error('Failed to save settings or reprocess documents:', error);
       setNotification({
-        message: '설정 저장에 실패했습니다.',
+        message: `설정 저장 또는 문서 재처리 중 오류가 발생했습니다: ${error.message}`,
         type: 'error'
       });
     } finally {
@@ -966,6 +1046,8 @@ const KnowledgeBaseSettings = ({
           selectedDocument={selectedDocument}
           loadingPreview={loadingPreview}
           setNotification={setNotification}
+          selectedIndexId={selectedIndexId}
+          onTabSwitch={onTabSwitch}
         />
 
         <ChunkingPreview
