@@ -76,6 +76,16 @@ export const chromaService = {
   async getCollectionStats(collectionId) {
     const response = await api.get(`/chroma/collections/${collectionId}/stats`);
     return response.data;
+  },
+
+  async clearAllCollections() {
+    const response = await api.post('/chroma/clear');
+    return response.data;
+  },
+
+  async resetAllCollections() {
+    const response = await api.post('/chroma/reset');
+    return response.data;
   }
 };
 
