@@ -51,6 +51,32 @@ const RAGManagerPage = () => {
     }
   }, [ragManager.notification]);
 
+  // Listen for document reprocessing completion to refresh data
+  useEffect(() => {
+    const handleDocumentsReprocessed = (event) => {
+      console.log('Documents reprocessed event received:', event.detail);
+      
+      // Refresh documents and knowledge bases to show updated chunk counts
+      ragManager.loadAllDocuments();
+      ragManager.loadKnowledgeBases();
+      
+      // Show notification if we're in the file manager tab
+      if (ragManager.activeDocTab === 'file-manager' && event.detail) {
+        const { processedCount, totalChunks } = event.detail;
+        ragManager.showNotification(
+          `문서가 재처리되어 청크 수가 업데이트되었습니다. (총 ${totalChunks || processedCount}개 청크)`,
+          'success'
+        );
+      }
+    };
+
+    window.addEventListener('documentsReprocessed', handleDocumentsReprocessed);
+
+    return () => {
+      window.removeEventListener('documentsReprocessed', handleDocumentsReprocessed);
+    };
+  }, [ragManager.activeDocTab]);
+
   // Handle select all documents (needs access to filteredData)
   const handleSelectAllDocuments = () => {
     if (ragManager.selectedDocuments.length === ragManager.filteredData.length) {

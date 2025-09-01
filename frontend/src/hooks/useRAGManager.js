@@ -294,6 +294,41 @@ export const useRAGManager = () => {
     setDocumentStats(stats);
   };
 
+  const loadKnowledgeBases = async () => {
+    try {
+      const response = await documentService.getKnowledgeBases();
+      const knowledgeBases = response.knowledge_bases || [];
+      
+      setKnowledgeBases(knowledgeBases);
+      
+      // Also update indexList to keep it in sync
+      const updatedIndexList = knowledgeBases.map(kb => ({
+        id: kb.id,
+        name: kb.name,
+        status: kb.status || 'active',
+        description: kb.description,
+        document_count: kb.document_count || 0,
+        chroma_exists: false,
+        chroma_chunks: 0,
+        chroma_metadata: {},
+        is_synced: false
+      }));
+      
+      setIndexList(updatedIndexList);
+      
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('knowledgeListUpdated'));
+      
+      console.log('Knowledge bases loaded:', knowledgeBases.length);
+      
+      return knowledgeBases;
+    } catch (error) {
+      console.error('Failed to load knowledge bases:', error);
+      setKnowledgeBases([]);
+      throw error;
+    }
+  };
+
   // File operations
   const validateFile = (file) => {
     const maxSize = 50 * 1024 * 1024; // 50MB
@@ -434,6 +469,11 @@ export const useRAGManager = () => {
     }));
   };
 
+  // Notification helper
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+  };
+
   return {
     // State
     documents,
@@ -499,11 +539,13 @@ export const useRAGManager = () => {
     handleKnowledgePageChange,
     loadInitialData,
     loadAllDocuments,
+    loadKnowledgeBases,
     loadDocumentsByIndex,
     syncDocumentsFromChroma,
     updateDocumentStats,
     validateFile,
     handleFileUpload,
-    handleChunkingSettingsChange
+    handleChunkingSettingsChange,
+    showNotification
   };
 };

@@ -25,9 +25,26 @@ export const chatService = {
         ...settings
       }
     };
+    
     if (modelId) {
       data.model_id = modelId;
     }
+    
+    // ChromaDB collection selection for RAG
+    if (settings.knowledge_base_id) {
+      data.category_id = settings.knowledge_base_id;
+      data.collection_name = settings.knowledge_base_id;
+    }
+    
+    console.log('Sending chat request:', {
+      message: message.substring(0, 50) + '...',
+      model_id: data.model_id,
+      use_rag: data.settings.use_rag,
+      knowledge_base_id: settings.knowledge_base_id,
+      category_id: data.category_id,
+      collection_name: data.collection_name
+    });
+    
     const response = await api.post('/chat', data);
     return response.data;
   }

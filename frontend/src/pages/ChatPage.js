@@ -116,6 +116,13 @@ const ChatPage = () => {
       const useRag = selectedSource && selectedSource.startsWith('kb_');
       const knowledgeBaseId = useRag ? selectedSource.replace('kb_', '') : null;
       
+      console.log('Chat request preparation:', {
+        selectedSource,
+        useRag,
+        knowledgeBaseId,
+        selectedModel: selectedModel?.model_id
+      });
+      
       const settings = {
         use_rag: useRag,
         knowledge_base_id: knowledgeBaseId,
@@ -126,7 +133,6 @@ const ChatPage = () => {
 
       const response = await chatService.sendMessage(
         message, 
-        null, 
         selectedModel?.model_id,
         settings
       );
@@ -193,7 +199,9 @@ const ChatPage = () => {
               <h4>Source</h4>
               <div className="source-status">
                 <FontAwesomeIcon icon={faFileAlt} className="status-icon" />
-                <span className="status-text">선택 가능</span>
+                <span className="status-text">
+                  {selectedSource ? (selectedSource.startsWith('kb_') ? 'ChromaDB RAG' : '일반') : '선택 가능'}
+                </span>
               </div>
             </div>
             <div className="source-dropdown-wrapper">
@@ -226,16 +234,16 @@ const ChatPage = () => {
                 value={selectedSource}
                 onChange={(e) => setSelectedSource(e.target.value)}
               >
-                <option value="">소스를 선택하세요</option>
-                <optgroup label="문서">
+                <option value="">일반 대화 (RAG 사용 안함)</option>
+                <optgroup label="📚 지식 베이스 (ChromaDB RAG)">
                   {knowledgeBases.length > 0 ? (
                     knowledgeBases.map(kb => (
                       <option key={kb.id} value={`kb_${kb.id}`}>
-                        {kb.name}
+                        🔍 {kb.name} ({kb.document_count}개 문서)
                       </option>
                     ))
                   ) : (
-                    <option value="" disabled>문서가 없습니다</option>
+                    <option value="" disabled>지식 베이스가 없습니다</option>
                   )}
                 </optgroup>
               </select>

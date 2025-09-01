@@ -769,38 +769,98 @@ const KnowledgeBaseSettings = ({
                   </div>
                   <div className="summary-meta">
                     {(() => {
-                      // 컬렉션 전체 정보 표시 - 수학적 계산 기반
+                      // 컬렉션 전체 정보 표시 - 정확한 계산 로직
                       let estimatedChunks = 0;
                       
-                      if (collectionMetadata && collectionMetadata.total_tokens) {
-                        // 전체 문자 기반 계산
-                        const effectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
-                        estimatedChunks = Math.max(1, Math.ceil(collectionMetadata.total_tokens / effectiveChunkSize));
+                      // 현재 컬렉션에 저장된 실제 설정값 (메타데이터에서 가져옴)
+                      let currentStoredChunkSize = 512;
+                      let currentStoredOverlap = 50;
+                      
+                      if (collectionMetadata && collectionMetadata.metadata) {
+                        currentStoredChunkSize = collectionMetadata.metadata.chunk_size || 512;
+                        currentStoredOverlap = collectionMetadata.metadata.chunk_overlap || 50;
+                      }
+                      
+                      // 현재 UI에 표시된 설정값 (사용자가 변경 중이거나 로드된 값)
+                      const currentUIChunkSize = chunkSize;
+                      const currentUIChunkOverlap = chunkOverlap;
+                      
+                      // 설정 변경 여부 확인 - hasChanges 상태를 우선적으로 사용
+                      // hasChanges가 false이면 초기 로드 상태이므로 변화 없음으로 간주
+                      const settingsChanged = hasChanges && (
+                        currentStoredChunkSize !== currentUIChunkSize || 
+                        currentStoredOverlap !== currentUIChunkOverlap
+                      );
+                      
+                      console.log('Chunk calculation debug:', {
+                        storedChunkSize: currentStoredChunkSize,
+                        storedOverlap: currentStoredOverlap,
+                        uiChunkSize: currentUIChunkSize,
+                        uiOverlap: currentUIChunkOverlap,
+                        hasChanges,
+                        settingsChanged,
+                        currentChunkCount,
+                        totalTokens: collectionMetadata?.total_tokens,
+                        loadingMetadata
+                      });
+                      
+                      if (collectionMetadata && collectionMetadata.total_tokens && settingsChanged) {
+                        // 전체 토큰 기반 정확한 계산 (설정이 변경된 경우에만)
+                        const totalTokens = collectionMetadata.total_tokens;
+                        const newEffectiveChunkSize = Math.max(1, currentUIChunkSize - currentUIChunkOverlap);
+                        
+                        // 새로운 설정으로 예상되는 청크 수 계산
+                        estimatedChunks = Math.max(1, Math.ceil(totalTokens / newEffectiveChunkSize));
+                        
                       } else if (currentChunkCount > 0) {
-                        // 메타데이터가 없는 경우 현재 청크 수 기반으로 추정
-                        const currentAvgChunkSize = 512; // 기존 설정 추정값
-                        const newEffectiveChunkSize = Math.max(1, chunkSize - chunkOverlap);
-                        const sizeRatio = currentAvgChunkSize / newEffectiveChunkSize;
-                        estimatedChunks = Math.max(1, Math.ceil(currentChunkCount * sizeRatio));
+                        if (!settingsChanged) {
+                          // 설정이 변경되지 않았으면 현재 청크 수와 동일
+                          estimatedChunks = currentChunkCount;
+                        } else {
+                          // 메타데이터가 없고 설정이 변경된 경우에만 비례 계산
+                          const currentEffectiveChunkSize = Math.max(1, currentStoredChunkSize - currentStoredOverlap);
+                          const newEffectiveChunkSize = Math.max(1, currentUIChunkSize - currentUIChunkOverlap);
+                          
+                          const sizeRatio = currentEffectiveChunkSize / newEffectiveChunkSize;
+                          estimatedChunks = Math.max(1, Math.ceil(currentChunkCount * sizeRatio));
+                        }
                       }
                       
                       const chunkDifference = estimatedChunks - currentChunkCount;
+                      const hasValidEstimate = estimatedChunks > 0 && (collectionMetadata?.total_tokens || currentChunkCount > 0);
                       
                       return (
                         <>
-                          {estimatedChunks > 0 && (
+                          {hasValidEstimate && (
                             <span className="meta-item">
                               새 설정 예상: {estimatedChunks.toLocaleString()}개 청크
+                              {!settingsChanged && ' (현재와 동일)'}
                             </span>
                           )}
-                          {chunkDifference !== 0 && estimatedChunks > 0 && (
+                          {hasValidEstimate && settingsChanged && chunkDifference !== 0 && (
                             <span className={`meta-item ${chunkDifference > 0 ? 'increase' : 'decrease'}`}>
                               {chunkDifference > 0 ? '+' : ''}{chunkDifference.toLocaleString()}개 변화
+                              {chunkDifference > 0 ? ' (증가)' : ' (감소)'}
+                            </span>
+                          )}
+                          {hasValidEstimate && settingsChanged && chunkDifference === 0 && (
+                            <span className="meta-item">
+                              변화 없음 (동일한 청크 수)
+                            </span>
+                          )}
+                          {hasValidEstimate && !settingsChanged && (
+                            <span className="meta-item">
+                              변화 없음 (현재 설정 적용 중)
                             </span>
                           )}
                           {currentChunkCount === 0 && !loadingMetadata && (
                             <span className="meta-item warning">
                               컬렉션이 비어있음
+                            </span>
+                          )}
+                          {!hasValidEstimate && currentChunkCount > 0 && (
+                            <span className="meta-item muted">
+                              예상 계산을 위해서는 문서 재처리가 필요합니다
                             </span>
                           )}
                         </>
