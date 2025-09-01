@@ -180,31 +180,21 @@ const ChatPage = () => {
     }
   };
 
-  const handleModelSelect = (model) => {
+  const handleModelSelect = (model, isUserAction = true) => {
     setSelectedModel(model);
     
-    const systemMessage = {
-      id: Date.now(),
-      content: `🤖 "${model.name || model.model_id}" 모델이 선택되었습니다.${bedrockHealth?.rag_enabled ? '' : ' (Mock 모드)'}`,
-      type: 'ai',
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, systemMessage]);
+    // Only show the message if the user manually selected the model
+    if (isUserAction && messages.length > 0) {
+      const systemMessage = {
+        id: Date.now(),
+        content: `🤖 "${model.name || model.model_id}" 모델이 선택되었습니다.${bedrockHealth?.rag_enabled ? '' : ' (Mock 모드)'}`,
+        type: 'ai',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, systemMessage]);
+    }
   };
 
-  // 모델이 자동 선택되지 않았을 경우 기본 모델 설정
-  useEffect(() => {
-    if (bedrockHealth?.rag_enabled && !selectedModel) {
-      // 기본 Claude 3 Haiku 모델 ID 설정
-      const defaultModelId = 'anthropic.claude-3-haiku-20240307-v1:0';
-      const defaultModel = {
-        model_id: defaultModelId,
-        name: 'Claude 3 Haiku',
-        provider: 'anthropic'
-      };
-      setSelectedModel(defaultModel);
-    }
-  }, [bedrockHealth, selectedModel]);
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);

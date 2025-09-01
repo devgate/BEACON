@@ -73,7 +73,8 @@ const ModelSelectorDropdown = ({ selectedModel, onModelSelect, disabled = false 
           ) || textModels[0];
           
           if (defaultModel) {
-            onModelSelect(defaultModel);
+            // Auto-selection should not trigger user-facing messages
+            onModelSelect(defaultModel, false);
           }
         }
       } else {
@@ -91,7 +92,7 @@ const ModelSelectorDropdown = ({ selectedModel, onModelSelect, disabled = false 
 
   const handleModelSelect = (model) => {
     if (!disabled) {
-      onModelSelect(model);
+      onModelSelect(model, true); // User manually selected the model
       setIsOpen(false);
     }
   };
