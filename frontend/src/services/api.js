@@ -375,3 +375,107 @@ export const weatherService = {
     return response.data;
   }
 };
+
+// Arena Service for Model Comparison
+export const arenaService = {
+  async sendMessage(arenaRequest) {
+    const { message, leftModel, rightModel, settings = {} } = arenaRequest;
+    
+    console.log('Sending arena request:', {
+      message: message.substring(0, 50) + '...',
+      model_a: leftModel,
+      model_b: rightModel,
+      settings: settings
+    });
+
+    try {
+      // Update data to match backend API format
+      const apiData = {
+        message,
+        model_a: leftModel,
+        model_b: rightModel,
+        settings
+      };
+
+      const response = await api.post('/arena/chat', apiData);
+      
+      // Transform response to match expected frontend format
+      return {
+        arena_id: response.data.arena_id,
+        leftResponse: {
+          content: response.data.responses.model_a.text,
+          model_used: response.data.responses.model_a.model_id,
+          processing_time: response.data.responses.model_a.response_time,
+          tokens_used: response.data.responses.model_a.tokens_used.input_tokens + response.data.responses.model_a.tokens_used.output_tokens,
+          cost_estimate: response.data.responses.model_a.cost_estimate.total,
+          error: !!response.data.responses.model_a.error
+        },
+        rightResponse: {
+          content: response.data.responses.model_b.text,
+          model_used: response.data.responses.model_b.model_id,
+          processing_time: response.data.responses.model_b.response_time,
+          tokens_used: response.data.responses.model_b.tokens_used.input_tokens + response.data.responses.model_b.tokens_used.output_tokens,
+          cost_estimate: response.data.responses.model_b.cost_estimate.total,
+          error: !!response.data.responses.model_b.error
+        }
+      };
+    } catch (error) {
+      console.error('Arena request failed:', error);
+      throw error;
+    }
+  },
+
+  async vote(voteData) {
+    const { comparisonId, winner, message, leftModel, rightModel } = voteData;
+    
+    const data = {
+      arena_id: comparisonId,
+      winner: winner === 'left' ? 'model_a' : winner === 'right' ? 'model_b' : 'tie',
+      reason: message || '',
+      user_id: 'anonymous'  // Could be replaced with actual user ID when auth is implemented
+    };
+
+    console.log('Recording vote:', {
+      arena_id: comparisonId,
+      winner: data.winner,
+      left_model: leftModel,
+      right_model: rightModel
+    });
+
+    try {
+      const response = await api.post('/arena/vote', data);
+      return response.data;
+    } catch (error) {
+      console.error('Vote recording failed:', error);
+      throw error;
+    }
+  },
+
+  async getHistory(limit = 10) {
+    try {
+      const response = await api.get(`/arena/history?limit=${limit}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get arena history:', error);
+      return {
+        comparisons: [],
+        votes: []
+      };
+    }
+  },
+
+  async getStats() {
+    try {
+      const response = await api.get('/arena/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get arena stats:', error);
+      return {
+        total_votes: 0,
+        model_wins: {},
+        tie_rate: 0.0,
+        total_comparisons: 0
+      };
+    }
+  }
+};

@@ -1,6 +1,6 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faRobot, faComments, faCogs, faUserCircle, faCog, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
+import { faRobot, faComments, faCogs, faUserCircle, faBalanceScale } from '@fortawesome/free-solid-svg-icons';
 
 const Header = ({ activeTab, setActiveTab }) => {
   return (
@@ -17,6 +17,13 @@ const Header = ({ activeTab, setActiveTab }) => {
           >
             <FontAwesomeIcon icon={faComments} />
             <span>Chat</span>
+          </button>
+          <button 
+            className={`nav-tab ${activeTab === 'arena' ? 'active' : ''}`}
+            onClick={() => setActiveTab('arena')}
+          >
+            <FontAwesomeIcon icon={faBalanceScale} />
+            <span>Arena</span>
           </button>
           <button 
             className={`nav-tab ${activeTab === 'ragManager' ? 'active' : ''}`}
