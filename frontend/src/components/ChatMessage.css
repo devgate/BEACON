@@ -1,0 +1,138 @@
+/* Message container */
+.message {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1.5rem;
+  max-width: 100%;
+}
+
+.message.user {
+  align-items: flex-end;
+}
+
+.message.ai {
+  align-items: flex-start;
+}
+
+/* Message bubble */
+.message-content {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  max-width: 70%;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  position: relative;
+}
+
+.message.user .message-content {
+  background: #0ea5e9;
+  color: white;
+  border-radius: 16px 16px 4px 16px;
+}
+
+.message.ai .message-content {
+  background: rgba(30, 41, 59, 0.8);
+  color: #e2e8f0;
+  border: 1px solid rgba(71, 85, 105, 0.3);
+  border-radius: 16px 16px 16px 4px;
+}
+
+.message-content.loading {
+  opacity: 0.7;
+}
+
+/* Referenced documents */
+.referenced-docs-container {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(51, 65, 85, 0.3);
+  border-radius: 8px;
+  max-width: 70%;
+}
+
+.referenced-doc-card {
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 6px;
+}
+
+.doc-title {
+  font-size: 0.875rem;
+  color: #e2e8f0;
+}
+
+/* Message metadata */
+.message-metadata {
+  margin-top: 0.25rem;
+  padding: 0;
+  font-size: 0.625rem;
+  color: #64748b;
+  max-width: fit-content;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.message.user .message-metadata {
+  align-self: flex-end;
+}
+
+.message.ai .message-metadata {
+  align-self: flex-start;
+}
+
+.metadata-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  white-space: nowrap;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.metadata-item svg {
+  width: 10px;
+  height: 10px;
+  opacity: 0.8;
+}
+
+.rag-badge {
+  margin-left: 0.25rem;
+  font-size: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.rag-badge.rag-enabled {
+  color: #22c55e;
+}
+
+.rag-badge.rag-disabled {
+  color: #6b7280;
+}
+
+.metadata-item.cost {
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+/* Message time */
+.message-time {
+  font-size: 0.625rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  align-self: flex-end;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.message.user .message-time {
+  text-align: right;
+}
+
+.message.ai .message-time {
+  text-align: left;
+  align-self: flex-start;
+}

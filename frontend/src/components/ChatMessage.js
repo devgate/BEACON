@@ -1,6 +1,7 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFileAlt, faFilePdf, faDownload, faBrain, faDollarSign, faClock, faFileText, faExternalLinkAlt, faQuoteLeft } from '@fortawesome/free-solid-svg-icons';
+import './ChatMessage.css';
 
 const ChatMessage = ({ message }) => {
   // 디버깅을 위한 로깅

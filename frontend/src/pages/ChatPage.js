@@ -5,7 +5,7 @@ import ModelSelectorDropdown from '../components/ModelSelectorDropdown';
 import './ChatPage.css';
 import { chatService, bedrockService, documentService } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faComments, faFileAlt, faGlobe, faFile, faBars, faTimes, faCheckCircle, faExclamationCircle } from '@fortawesome/free-solid-svg-icons';
+import { faComments, faFileAlt, faGlobe, faFile, faBars, faTimes, faCheckCircle, faExclamationCircle, faBrain, faBolt } from '@fortawesome/free-solid-svg-icons';
 
 const ChatPage = () => {
   const [messages, setMessages] = useState([]);
@@ -344,49 +344,33 @@ const ChatPage = () => {
         <main id="main-chat" className="chat-area" role="main" aria-label="채팅 영역">
           {messages.length === 0 ? (
             <div className="chat-welcome">
-              <h1>안녕하세요! AI 어시스턴트입니다</h1>
-              <div className="welcome-subtitle">
-                <FontAwesomeIcon icon={faComments} style={{ color: '#00d4ff' }} />
-                <span>무엇이든 물어보세요. 도와드리겠습니다.</span>
-              </div>
-              <div className="welcome-features" style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '16px',
-                marginTop: '32px'
-              }}>
-                <div className="feature-card" style={{
-                  padding: '16px',
-                  background: 'rgba(0, 212, 255, 0.05)',
-                  border: '1px solid rgba(0, 212, 255, 0.2)',
-                  borderRadius: '12px'
-                }}>
-                  <strong style={{ color: '#00d4ff' }}>🚀 빠른 응답</strong>
-                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                    최신 AI 모델로 즉각적인 답변
-                  </p>
+              <div className="welcome-emoji">👋</div>
+              <h2 className="welcome-title">AI 어시스턴트에 오신 것을 환영합니다</h2>
+              <p className="welcome-text">
+                업로드한 문서에 대해 질문하거나 일반적인 대화를 시작해보세요.
+              </p>
+
+              <div className="welcome-features">
+                <div className="feature-item">
+                  <div className="feature-icon">🧠</div>
+                  <div className="feature-content">
+                    <h4>스마트한 AI</h4>
+                    <p>최신 AI 모델로 정확한 답변</p>
+                  </div>
                 </div>
-                <div className="feature-card" style={{
-                  padding: '16px',
-                  background: 'rgba(0, 212, 255, 0.05)',
-                  border: '1px solid rgba(0, 212, 255, 0.2)',
-                  borderRadius: '12px'
-                }}>
-                  <strong style={{ color: '#00d4ff' }}>🎯 정확한 정보</strong>
-                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                    신뢰할 수 있는 고품질 응답
-                  </p>
+                <div className="feature-item">
+                  <div className="feature-icon">📄</div>
+                  <div className="feature-content">
+                    <h4>문서 분석</h4>
+                    <p>PDF 문서를 이해하고 답변</p>
+                  </div>
                 </div>
-                <div className="feature-card" style={{
-                  padding: '16px',
-                  background: 'rgba(0, 212, 255, 0.05)',
-                  border: '1px solid rgba(0, 212, 255, 0.2)',
-                  borderRadius: '12px'
-                }}>
-                  <strong style={{ color: '#00d4ff' }}>💡 다양한 주제</strong>
-                  <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                    코딩부터 일상 대화까지
-                  </p>
+                <div className="feature-item">
+                  <div className="feature-icon">💬</div>
+                  <div className="feature-content">
+                    <h4>빠른 응답</h4>
+                    <p>실시간으로 빠르게 대화</p>
+                  </div>
                 </div>
               </div>
             </div>

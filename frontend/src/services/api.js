@@ -425,31 +425,32 @@ export const arenaService = {
     }
   },
 
-  async vote(voteData) {
-    const { comparisonId, winner, message, leftModel, rightModel } = voteData;
+  // TODO: 투표 기능 추후 구현
+  // async vote(voteData) {
+  //   const { comparisonId, winner, message, leftModel, rightModel } = voteData;
     
-    const data = {
-      arena_id: comparisonId,
-      winner: winner === 'left' ? 'model_a' : winner === 'right' ? 'model_b' : 'tie',
-      reason: message || '',
-      user_id: 'anonymous'  // Could be replaced with actual user ID when auth is implemented
-    };
+  //   const data = {
+  //     arena_id: comparisonId,
+  //     winner: winner === 'left' ? 'model_a' : winner === 'right' ? 'model_b' : 'tie',
+  //     reason: message || '',
+  //     user_id: 'anonymous'  // Could be replaced with actual user ID when auth is implemented
+  //   };
 
-    console.log('Recording vote:', {
-      arena_id: comparisonId,
-      winner: data.winner,
-      left_model: leftModel,
-      right_model: rightModel
-    });
+  //   console.log('Recording vote:', {
+  //     arena_id: comparisonId,
+  //     winner: data.winner,
+  //     left_model: leftModel,
+  //     right_model: rightModel
+  //   });
 
-    try {
-      const response = await api.post('/arena/vote', data);
-      return response.data;
-    } catch (error) {
-      console.error('Vote recording failed:', error);
-      throw error;
-    }
-  },
+  //   try {
+  //     const response = await api.post('/arena/vote', data);
+  //     return response.data;
+  //   } catch (error) {
+  //     console.error('Vote recording failed:', error);
+  //     throw error;
+  //   }
+  // },
 
   async getHistory(limit = 10) {
     try {
@@ -458,8 +459,8 @@ export const arenaService = {
     } catch (error) {
       console.error('Failed to get arena history:', error);
       return {
-        comparisons: [],
-        votes: []
+        comparisons: []
+        // votes: [] // TODO: 투표 기능 추후 구현
       };
     }
   },
@@ -471,9 +472,9 @@ export const arenaService = {
     } catch (error) {
       console.error('Failed to get arena stats:', error);
       return {
-        total_votes: 0,
+        // total_votes: 0, // TODO: 투표 기능 추후 구현
         model_wins: {},
-        tie_rate: 0.0,
+        // tie_rate: 0.0, // TODO: 투표 기능 추후 구현
         total_comparisons: 0
       };
     }

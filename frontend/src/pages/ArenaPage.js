@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect } from 'react';
 import ArenaResponse from '../components/ArenaResponse';
-import ArenaVoting from '../components/ArenaVoting';
+// TODO: 투표 기능 추후 구현
+// import ArenaVoting from '../components/ArenaVoting';
 import './ArenaPage.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -11,7 +12,7 @@ import {
   faRobot,
   faBrain,
   faLightbulb,
-  faVoteYea,
+  // faVoteYea, // TODO: 투표 기능 추후 구현
   faRocket,
   faStar,
   faPlay
@@ -229,29 +230,30 @@ const ArenaPage = () => {
     }
   };
 
-  const handleVote = async (winner) => {
-    if (!currentComparison || currentComparison.voted) return;
+  // TODO: 투표 기능 추후 구현
+  // const handleVote = async (winner) => {
+  //   if (!currentComparison || currentComparison.voted) return;
 
-    try {
-      await arenaService.vote({
-        comparisonId: currentComparison.id,
-        winner: winner, // 'left', 'right', 'tie'
-        message: currentComparison.message,
-        leftModel: currentComparison.leftModel.model_id,
-        rightModel: currentComparison.rightModel.model_id
-      });
+  //   try {
+  //     await arenaService.vote({
+  //       comparisonId: currentComparison.id,
+  //       winner: winner, // 'left', 'right', 'tie'
+  //       message: currentComparison.message,
+  //       leftModel: currentComparison.leftModel.model_id,
+  //       rightModel: currentComparison.rightModel.model_id
+  //     });
 
-      // Update current comparison as voted
-      setCurrentComparison(prev => ({
-        ...prev,
-        voted: true,
-        voteChoice: winner
-      }));
+  //     // Update current comparison as voted
+  //     setCurrentComparison(prev => ({
+  //       ...prev,
+  //       voted: true,
+  //       voteChoice: winner
+  //     }));
 
-    } catch (error) {
-      console.error('Failed to record vote:', error);
-    }
-  };
+  //   } catch (error) {
+  //     console.error('Failed to record vote:', error);
+  //   }
+  // };
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -373,11 +375,10 @@ const ArenaPage = () => {
                 <div className="title-accent"></div>
                 <p className="welcome-subtitle">
                   두 개의 AI 모델을 선택하고 메시지를 보내서 응답을 비교해보세요.
-                  <br />최고의 AI 성능을 직접 확인하고 평가해보세요!
                 </p>
               </div>
               
-              <div className="welcome-features">
+              {/* <div className="welcome-features">
                 <div className="feature-card">
                   <div className="feature-icon">
                     <FontAwesomeIcon icon={faBrain} />
@@ -405,10 +406,10 @@ const ArenaPage = () => {
                     <p>더 나은 응답을 선택하여 AI 성능 평가 참여</p>
                   </div>
                 </div>
-              </div>
+              </div> */}
               
               <div className="welcome-steps">
-                <h2 className="steps-title">시작하는 방법</h2>
+                {/* <h3 className="steps-title">시작하는 방법</h3> */}
                 <div className="steps-container">
                   <div className="step">
                     <div className="step-icon">
@@ -436,8 +437,8 @@ const ArenaPage = () => {
                       <FontAwesomeIcon icon={faStar} className="step-bg-icon" />
                     </div>
                     <div className="step-content">
-                      <h4>응답 비교 & 투표</h4>
-                      <p>두 AI의 응답을 비교하고 더 나은 답변에 투표하세요</p>
+                      <h4>응답 비교</h4>
+                      <p>두 AI의 응답을 비교하고 차이점을 확인하세요</p>
                     </div>
                   </div>
                 </div>
@@ -481,8 +482,8 @@ const ArenaPage = () => {
               />
             </div>
 
-            {/* Voting */}
-            {!isLoading && currentComparison && !currentComparison.error && (
+            {/* TODO: 투표 기능 추후 구현 */}
+            {/* {!isLoading && currentComparison && !currentComparison.error && (
               <ArenaVoting
                 onVote={handleVote}
                 voted={currentComparison.voted}
@@ -490,7 +491,7 @@ const ArenaPage = () => {
                 leftModel={currentComparison.leftModel}
                 rightModel={currentComparison.rightModel}
               />
-            )}
+            )} */}
           </div>
         )}
       </div>
