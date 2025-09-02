@@ -8,7 +8,13 @@ import {
   faSpinner,
   faCheckCircle,
   faExclamationTriangle,
-  faRobot
+  faRobot,
+  faBrain,
+  faLightbulb,
+  faVoteYea,
+  faRocket,
+  faStar,
+  faPlay
 } from '@fortawesome/free-solid-svg-icons';
 
 // API services
@@ -26,7 +32,7 @@ const ArenaPage = () => {
   const [availableModels, setAvailableModels] = useState([]);
 
   // Refs
-  const messagesEndRef = useRef(null);
+  const responsesRef = useRef(null);
   const inputRef = useRef(null);
 
   // Function to determine model characteristics based on model info
@@ -121,11 +127,13 @@ const ArenaPage = () => {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
+    scrollToResponses();
   }, [currentComparison]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToResponses = () => {
+    if (currentComparison && responsesRef.current) {
+      responsesRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   };
 
   const loadBedrockHealth = async () => {
@@ -357,37 +365,99 @@ const ArenaPage = () => {
         {!currentComparison ? (
           <div className="arena-welcome">
             <div className="welcome-content">
-              <h2>AI 모델 경쟁장</h2>
-              <p>두 개의 AI 모델을 선택하고 메시지를 보내서 응답을 비교해보세요.</p>
+              <div className="welcome-hero">
+                <div className="hero-icon">
+                  <FontAwesomeIcon icon={faRocket} />
+                </div>
+                <h1 className="welcome-title">AI 모델 경쟁장</h1>
+                <div className="title-accent"></div>
+                <p className="welcome-subtitle">
+                  두 개의 AI 모델을 선택하고 메시지를 보내서 응답을 비교해보세요.
+                  <br />최고의 AI 성능을 직접 확인하고 평가해보세요!
+                </p>
+              </div>
+              
+              <div className="welcome-features">
+                <div className="feature-card">
+                  <div className="feature-icon">
+                    <FontAwesomeIcon icon={faBrain} />
+                  </div>
+                  <div className="feature-content">
+                    <h3>다양한 AI 모델</h3>
+                    <p>Claude, GPT 등 최신 AI 모델들을 한 번에 비교</p>
+                  </div>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-icon">
+                    <FontAwesomeIcon icon={faLightbulb} />
+                  </div>
+                  <div className="feature-content">
+                    <h3>실시간 비교</h3>
+                    <p>동일한 질문에 대한 서로 다른 AI의 응답 비교</p>
+                  </div>
+                </div>
+                <div className="feature-card">
+                  <div className="feature-icon">
+                    <FontAwesomeIcon icon={faVoteYea} />
+                  </div>
+                  <div className="feature-content">
+                    <h3>투표 시스템</h3>
+                    <p>더 나은 응답을 선택하여 AI 성능 평가 참여</p>
+                  </div>
+                </div>
+              </div>
+              
               <div className="welcome-steps">
-                <div className="step">
-                  <span className="step-number">1</span>
-                  <span>좌측과 우측 모델을 선택하세요</span>
+                <h2 className="steps-title">시작하는 방법</h2>
+                <div className="steps-container">
+                  <div className="step">
+                    <div className="step-icon">
+                      <span className="step-number">1</span>
+                      <FontAwesomeIcon icon={faRobot} className="step-bg-icon" />
+                    </div>
+                    <div className="step-content">
+                      <h4>모델 선택</h4>
+                      <p>상단에서 좌측과 우측 AI 모델을 선택하세요</p>
+                    </div>
+                  </div>
+                  <div className="step">
+                    <div className="step-icon">
+                      <span className="step-number">2</span>
+                      <FontAwesomeIcon icon={faPlay} className="step-bg-icon" />
+                    </div>
+                    <div className="step-content">
+                      <h4>질문 입력</h4>
+                      <p>하단 입력창에 궁금한 것을 입력하고 전송하세요</p>
+                    </div>
+                  </div>
+                  <div className="step">
+                    <div className="step-icon">
+                      <span className="step-number">3</span>
+                      <FontAwesomeIcon icon={faStar} className="step-bg-icon" />
+                    </div>
+                    <div className="step-content">
+                      <h4>응답 비교 & 투표</h4>
+                      <p>두 AI의 응답을 비교하고 더 나은 답변에 투표하세요</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="step">
-                  <span className="step-number">2</span>
-                  <span>하단 입력창에 메시지를 입력하세요</span>
-                </div>
-                <div className="step">
-                  <span className="step-number">3</span>
-                  <span>응답을 비교하고 투표하세요</span>
+              </div>
+              
+              <div className="welcome-cta">
+                <div className="cta-content">
+                  <p className="cta-text">지금 시작해보세요!</p>
+                  <div className="cta-indicator">
+                    <span className="indicator-text">위에서 모델을 선택하세요</span>
+                    <div className="pulse-arrow">↑</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         ) : (
           <div className="arena-comparison">
-            {/* User Message */}
-            <div className="user-message">
-              <div className="message-header">
-                <FontAwesomeIcon icon={faRobot} className="user-icon" />
-                <span>Your Message</span>
-              </div>
-              <div className="message-content">{currentComparison.message}</div>
-            </div>
-
             {/* Model Responses */}
-            <div className="responses-container">
+            <div className="responses-container" ref={responsesRef}>
               <ArenaResponse
                 model={currentComparison.leftModel}
                 response={currentComparison.leftResponse}
@@ -423,8 +493,6 @@ const ArenaPage = () => {
             )}
           </div>
         )}
-        
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Bottom: Chat Input */}

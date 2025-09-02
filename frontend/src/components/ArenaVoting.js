@@ -16,11 +16,14 @@ import {
   faHeart,
   faStar
 } from '@fortawesome/free-solid-svg-icons';
+import './ArenaVoting.css';
 
 const ArenaVoting = React.memo(({ 
   onVote, 
   leftModel, 
   rightModel, 
+  voted = false,
+  voteChoice = null,
   disabled = false, 
   votingTips = [], 
   voteOptions = null 
@@ -138,6 +141,51 @@ const ArenaVoting = React.memo(({
       }
     ];
   }, [votingTips]);
+
+  // If already voted, show results
+  if (voted && voteChoice) {
+    const selectedOption = enhancedVoteOptions.find(opt => opt.id === voteChoice);
+    return (
+      <section className="arena-voting voted" role="group" aria-label="투표 완료">
+        <div className="vote-completed">
+          <div className="completion-header">
+            <div className="completion-icon-wrapper">
+              <FontAwesomeIcon icon={faCheckCircle} className="completion-icon" />
+              <div className="completion-pulse"></div>
+            </div>
+            <div className="completion-content">
+              <h3>투표가 완료되었습니다!</h3>
+              <p>소중한 피드백을 주셔서 감사합니다.</p>
+            </div>
+          </div>
+          
+          <div className="selected-vote-result">
+            <div className="result-label">선택한 답변:</div>
+            <div className="result-option">
+              <div className="result-visual">
+                <span className="result-emoji">{selectedOption?.emoji}</span>
+                <div className="result-icon-wrapper" style={{ '--vote-color': selectedOption?.color }}>
+                  <FontAwesomeIcon icon={selectedOption?.icon || faCheckCircle} className="result-icon" />
+                </div>
+              </div>
+              <div className="result-details">
+                <div className="result-choice">{selectedOption?.label}</div>
+                <div className="result-model">{selectedOption?.modelName}</div>
+              </div>
+              <div className="result-badge">
+                <FontAwesomeIcon icon={faTrophy} />
+              </div>
+            </div>
+          </div>
+          
+          <div className="vote-appreciation">
+            <FontAwesomeIcon icon={faHeart} className="appreciation-icon" />
+            <span>여러분의 피드백이 AI 모델 개선에 도움이 됩니다</span>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="arena-voting" role="group" aria-label="모델 응답 평가">
