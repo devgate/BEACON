@@ -21,6 +21,7 @@ TERRAFORM_DIR="../../infra/terraform"
 
 # 전역 변수 선언
 SKIP_SETUP_CHECK=false
+FORCE_CLEANUP=false
 DEPLOY_TARGET=""
 IMAGE_TAG="latest"
 
@@ -33,14 +34,16 @@ usage() {
     echo "  all        - Frontend + Backend 전체 배포 (기본값)"
     echo "  frontend   - Frontend만 배포"
     echo "  backend    - Backend만 배포"
+    echo "  cleanup    - Docker 자원 정리만 실행"
     echo ""
     echo "TAG 옵션:"
     echo "  latest     - 최신 이미지 태그 (기본값)"
     echo "  v1.0.1     - 특정 버전 태그"
     echo ""
     echo "OPTIONS:"
-    echo "  --skip-setup   - setup-guide.sh 실행 체크를 건너뜀"
-    echo "  -h, --help     - 이 도움말을 표시"
+    echo "  --skip-setup     - setup-guide.sh 실행 체크를 건너뜀"
+    echo "  --force-cleanup  - 배포 전 강제 Docker 자원 정리"
+    echo "  -h, --help       - 이 도움말을 표시"
     echo ""
     echo "사전 요구사항:"
     echo "  1. setup-guide.sh 실행 완료 (또는 --skip-setup 플래그 사용)"
@@ -49,9 +52,17 @@ usage() {
     echo "  4. AWS CLI가 설정되어 있어야 함"
     echo ""
     echo "예시:"
-    echo "  $0 all latest              # 전체 배포 (setup-guide 체크 포함)"
-    echo "  $0 --skip-setup frontend   # setup-guide 체크 건너뛰고 프론트엔드만 배포"
-    echo "  $0 backend v1.0.1          # 백엔드만 특정 버전으로 배포"
+    echo "  $0 all latest                    # 전체 배포 (setup-guide 체크 포함)"
+    echo "  $0 --skip-setup frontend         # setup-guide 체크 건너뛰고 프론트엔드만 배포"
+    echo "  $0 --force-cleanup all latest    # Docker 정리 후 전체 배포"
+    echo "  $0 cleanup                       # Docker 자원 정리만 실행"
+    echo "  $0 backend v1.0.1                # 백엔드만 특정 버전으로 배포"
+    echo ""
+    echo "디스크 공간 부족 문제 해결:"
+    echo "  'no space left on device' 오류 발생 시:"
+    echo "  1. $0 cleanup                    # 자동 Docker 정리 실행"
+    echo "  2. docker system prune -a -f --volumes  # 수동 전체 정리"
+    echo "  3. df -h                         # 디스크 사용량 확인"
     echo ""
     echo "첫 사용 시에는 다음 명령어로 환경을 먼저 설정하세요:"
     echo "  ./setup-guide.sh"
@@ -412,9 +423,137 @@ install_tools() {
     return 0
 }
 
+# Docker 디스크 사용량 확인
+check_docker_disk_usage() {
+    log_info "Docker 디스크 사용량 확인 중..."
+    
+    # 디스크 사용량 확인 (Docker root 디렉토리)
+    local docker_root="/var/lib/docker"
+    local disk_usage
+    
+    if [[ -d "$docker_root" ]]; then
+        disk_usage=$(df "$docker_root" | awk 'NR==2 {print $5}' | sed 's/%//')
+    else
+        # 기본 루트 파티션 사용량 확인
+        disk_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    fi
+    
+    log_info "현재 디스크 사용량: ${disk_usage}%"
+    
+    # 경고 임계치 확인
+    if [[ $disk_usage -ge 90 ]]; then
+        log_error "디스크 사용량이 90%를 초과했습니다. 배포를 중단합니다."
+        log_error "Docker 자원을 정리한 후 다시 시도하세요."
+        return 1
+    elif [[ $disk_usage -ge 80 ]]; then
+        log_warning "디스크 사용량이 80%를 초과했습니다. Docker 자원 정리를 권장합니다."
+    else
+        log_success "디스크 사용량이 정상 범위입니다."
+    fi
+    
+    return 0
+}
+
+# Docker 자원 정리 함수
+cleanup_docker_resources() {
+    local force_cleanup=${1:-false}
+    
+    log_info "Docker 자원 정리를 시작합니다..."
+    
+    # 디스크 사용량이 높거나 강제 정리 요청시 정리 실행
+    if [[ "$force_cleanup" == "true" ]] || ! check_docker_disk_usage; then
+        log_info "불필요한 Docker 자원을 정리합니다..."
+        
+        # 1. 중지된 컨테이너 제거
+        log_info "중지된 컨테이너 제거 중..."
+        local stopped_containers=$(docker container ls -aq --filter "status=exited")
+        if [[ -n "$stopped_containers" ]]; then
+            docker container rm $stopped_containers 2>/dev/null || true
+            log_success "중지된 컨테이너 제거 완료"
+        else
+            log_info "제거할 중지된 컨테이너가 없습니다."
+        fi
+        
+        # 2. Dangling 이미지 제거
+        log_info "Dangling 이미지 제거 중..."
+        local dangling_images=$(docker images -q --filter "dangling=true")
+        if [[ -n "$dangling_images" ]]; then
+            docker rmi $dangling_images 2>/dev/null || true
+            log_success "Dangling 이미지 제거 완료"
+        else
+            log_info "제거할 Dangling 이미지가 없습니다."
+        fi
+        
+        # 3. 사용하지 않는 네트워크 제거
+        log_info "사용하지 않는 네트워크 제거 중..."
+        docker network prune -f >/dev/null 2>&1 || true
+        
+        # 4. 사용하지 않는 볼륨 제거
+        log_info "사용하지 않는 볼륨 제거 중..."
+        docker volume prune -f >/dev/null 2>&1 || true
+        
+        # 5. 빌드 캐시 정리
+        log_info "Docker 빌드 캐시 정리 중..."
+        docker builder prune -f >/dev/null 2>&1 || true
+        
+        # 6. 시스템 정리 (추가적인 정리)
+        log_info "Docker 시스템 정리 중..."
+        docker system prune -f >/dev/null 2>&1 || true
+        
+        log_success "Docker 자원 정리 완료"
+        
+        # 정리 후 디스크 사용량 재확인
+        check_docker_disk_usage
+    else
+        log_info "디스크 사용량이 정상 범위이므로 정리를 건너뜁니다."
+    fi
+}
+
+# 이전 버전 이미지 정리
+cleanup_old_images() {
+    local service=$1
+    local keep_versions=${2:-2}  # 최근 2개 버전만 보관
+    
+    log_info "${service}의 이전 버전 이미지 정리 중..."
+    
+    # ECR 레포지토리 이름 구성
+    local repo_name="beacon-${service}"
+    
+    # 로컬에서 해당 서비스의 이미지 찾기
+    local old_images=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${repo_name}" | tail -n +$((keep_versions + 1)))
+    
+    if [[ -n "$old_images" ]]; then
+        log_info "제거할 이전 버전 이미지들:"
+        echo "$old_images"
+        
+        echo "$old_images" | xargs -r docker rmi 2>/dev/null || true
+        log_success "${service}의 이전 버전 이미지 정리 완료"
+    else
+        log_info "${service}의 정리할 이전 버전 이미지가 없습니다."
+    fi
+}
+
 # 종속성 확인 및 설정
 check_dependencies() {
     log_info "종속성 확인 중..."
+    
+    # 0. Docker 디스크 사용량 사전 확인
+    if ! check_docker_disk_usage; then
+        log_warning "디스크 사용량이 높습니다. Docker 자원 정리를 실행하시겠습니까? (y/n): "
+        read -r cleanup_docker
+        
+        if [[ "$cleanup_docker" == "y" || "$cleanup_docker" == "Y" ]]; then
+            cleanup_docker_resources true
+            
+            # 정리 후에도 디스크 사용량이 높으면 배포 중단
+            if ! check_docker_disk_usage; then
+                log_error "디스크 정리 후에도 사용량이 여전히 높습니다. 수동으로 디스크 공간을 확보해주세요."
+                exit 1
+            fi
+        else
+            log_warning "디스크 사용량이 높은 상태로 배포를 계속합니다."
+        fi
+    fi
     
     # 1. 도구 설치 확인 및 설치
     if ! install_tools; then
@@ -504,17 +643,63 @@ build_and_push_ecr() {
     
     log_info "${service} ECR 빌드 및 푸시 시작..."
     
+    # 빌드 전 이전 버전 이미지 정리
+    cleanup_old_images ${service}
+    
+    # 디스크 사용량 재확인 (빌드 전)
+    if ! check_docker_disk_usage; then
+        log_warning "빌드 전 디스크 사용량이 높습니다. 추가 정리를 실행하시겠습니까? (y/n): "
+        read -r additional_cleanup
+        
+        if [[ "$additional_cleanup" == "y" || "$additional_cleanup" == "Y" ]]; then
+            cleanup_docker_resources true
+        fi
+    fi
+    
     cd ../../${service}
     
     # 빌드 스크립트 실행
     if [[ -f "build.sh" ]]; then
         chmod +x build.sh
-        ./build.sh ${IMAGE_TAG}
-        log_success "${service} ECR 푸시 완료"
+        
+        # 빌드 실행 (오류 발생 시 재시도)
+        local build_attempts=2
+        local attempt=1
+        
+        while [[ $attempt -le $build_attempts ]]; do
+            log_info "${service} 빌드 시도 ${attempt}/${build_attempts}"
+            
+            if ./build.sh ${IMAGE_TAG}; then
+                log_success "${service} ECR 푸시 완료"
+                break
+            else
+                if [[ $attempt -eq $build_attempts ]]; then
+                    log_error "${service} 빌드가 실패했습니다."
+                    
+                    # 디스크 공간 부족이 원인일 수 있으므로 추가 정리 제안
+                    local disk_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+                    if [[ $disk_usage -ge 85 ]]; then
+                        log_error "디스크 사용량이 ${disk_usage}%입니다. 'no space left on device' 오류일 가능성이 높습니다."
+                        log_error "수동으로 디스크 공간을 확보한 후 다시 시도하세요."
+                        log_error "권장 명령어: docker system prune -a -f --volumes"
+                    fi
+                    exit 1
+                else
+                    log_warning "${service} 빌드 실패, Docker 자원 정리 후 재시도..."
+                    cleanup_docker_resources true
+                    sleep 5
+                    ((attempt++))
+                fi
+            fi
+        done
     else
         log_error "${service}/build.sh 파일을 찾을 수 없습니다."
         exit 1
     fi
+    
+    # 빌드 후 임시 이미지 정리
+    log_info "${service} 빌드 후 임시 이미지 정리..."
+    docker image prune -f >/dev/null 2>&1 || true
     
     cd - > /dev/null
 }
@@ -652,19 +837,84 @@ AWS_REGION=$3
 
 echo "=== Updating ${SERVICE} container ==="
 
+# 디스크 사용량 확인
+echo "디스크 사용량 확인 중..."
+DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+echo "현재 디스크 사용량: ${DISK_USAGE}%"
+
+if [[ $DISK_USAGE -ge 85 ]]; then
+    echo "디스크 사용량이 높습니다. Docker 자원 정리를 실행합니다..."
+    
+    # Docker 자원 정리
+    echo "중지된 컨테이너 제거 중..."
+    docker container prune -f >/dev/null 2>&1 || true
+    
+    echo "사용하지 않는 이미지 제거 중..."
+    docker image prune -a -f >/dev/null 2>&1 || true
+    
+    echo "빌드 캐시 정리 중..."
+    docker builder prune -f >/dev/null 2>&1 || true
+    
+    echo "Docker 시스템 정리 중..."
+    docker system prune -f >/dev/null 2>&1 || true
+    
+    # 정리 후 디스크 사용량 재확인
+    DISK_USAGE_AFTER=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    echo "정리 후 디스크 사용량: ${DISK_USAGE_AFTER}%"
+    
+    if [[ $DISK_USAGE_AFTER -ge 90 ]]; then
+        echo "ERROR: 디스크 정리 후에도 사용량이 90%를 초과합니다. 배포를 중단합니다."
+        exit 1
+    fi
+fi
+
+# 기존 컨테이너 중지 및 제거 (이미지 pull 전에 먼저 실행)
+echo "기존 컨테이너 중지 중..."
+docker stop beacon-${SERVICE} 2>/dev/null || echo "컨테이너가 실행 중이 아닙니다."
+docker rm beacon-${SERVICE} 2>/dev/null || echo "컨테이너가 존재하지 않습니다."
+
+# 이전 버전 이미지 정리
+echo "이전 버전 이미지 정리 중..."
+OLD_IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "beacon-${SERVICE}" | grep -v "${ECR_IMAGE}" | head -5)
+if [[ -n "$OLD_IMAGES" ]]; then
+    echo "$OLD_IMAGES" | xargs -r docker rmi 2>/dev/null || true
+fi
+
 # ECR 로그인
 echo "ECR 로그인 중..."
 ECR_REGISTRY="933851512157.dkr.ecr.ap-northeast-2.amazonaws.com"
 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
 
-# 새 이미지 pull
+# 새 이미지 pull (재시도 로직 포함)
 echo "새 이미지 pull 중: ${ECR_IMAGE}"
-docker pull ${ECR_IMAGE}
+PULL_ATTEMPTS=3
+PULL_SUCCESS=false
 
-# 기존 컨테이너 중지 및 제거
-echo "기존 컨테이너 중지 중..."
-docker stop beacon-${SERVICE} 2>/dev/null || echo "컨테이너가 실행 중이 아닙니다."
-docker rm beacon-${SERVICE} 2>/dev/null || echo "컨테이너가 존재하지 않습니다."
+for attempt in $(seq 1 $PULL_ATTEMPTS); do
+    echo "이미지 pull 시도 ${attempt}/${PULL_ATTEMPTS}"
+    
+    if docker pull ${ECR_IMAGE}; then
+        echo "이미지 pull 성공"
+        PULL_SUCCESS=true
+        break
+    else
+        echo "이미지 pull 실패 (시도 ${attempt}/${PULL_ATTEMPTS})"
+        
+        if [[ $attempt -lt $PULL_ATTEMPTS ]]; then
+            # 실패 시 추가 정리 수행
+            echo "추가 Docker 자원 정리 중..."
+            docker system prune -f >/dev/null 2>&1 || true
+            sleep 5
+        fi
+    fi
+done
+
+if [[ "$PULL_SUCCESS" != "true" ]]; then
+    echo "ERROR: 이미지 pull이 최종 실패했습니다. 디스크 공간을 확인해주세요."
+    FINAL_DISK_USAGE=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    echo "현재 디스크 사용량: ${FINAL_DISK_USAGE}%"
+    exit 1
+fi
 
 # 새 컨테이너 시작
 echo "새 컨테이너 시작 중..."
@@ -684,6 +934,10 @@ elif [[ "${SERVICE}" == "backend" ]]; then
       -p 80:5000 \
       ${ECR_IMAGE}
 fi
+
+# 컨테이너 시작 후 임시 이미지 정리
+echo "임시 이미지 정리 중..."
+docker image prune -f >/dev/null 2>&1 || true
 
 # 컨테이너 상태 확인
 sleep 5
@@ -795,6 +1049,10 @@ parse_arguments() {
                 SKIP_SETUP_CHECK=true
                 shift
                 ;;
+            --force-cleanup)
+                FORCE_CLEANUP=true
+                shift
+                ;;
             -h|--help)
                 usage
                 ;;
@@ -833,6 +1091,31 @@ main() {
         fi
     else
         log_warning "--skip-setup 플래그가 설정되어 setup-guide 체크를 건너뜁니다."
+    fi
+    
+    # cleanup 옵션 처리
+    if [[ "$DEPLOY_TARGET" == "cleanup" ]]; then
+        log_info "Docker 자원 정리를 실행합니다..."
+        cleanup_docker_resources true
+        
+        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}🧹 Docker 자원 정리 완료!${NC}"
+        echo -e "${GREEN}========================================${NC}"
+        
+        # 정리 후 상태 표시
+        echo "디스크 사용량 상태:"
+        df -h | head -2
+        echo ""
+        echo "Docker 이미지 상태:"
+        docker images | head -5
+        
+        exit 0
+    fi
+    
+    # 강제 정리 옵션 처리
+    if [[ "$FORCE_CLEANUP" == "true" ]]; then
+        log_info "배포 전 강제 Docker 자원 정리를 실행합니다..."
+        cleanup_docker_resources true
     fi
     
     # 종속성 확인 (간소화된 버전 - setup-guide에서 대부분 확인됨)
