@@ -232,6 +232,127 @@ export const documentService = {
   async updateKnowledgeBaseSettings(indexId, settings) {
     const response = await api.put(`/knowledge/${indexId}/settings`, settings);
     return response.data;
+  },
+
+  async downloadDocument(doc) {
+    // Validate input
+    if (!doc || (!doc.id && doc.id !== 0)) {
+      throw new Error('유효하지 않은 문서 정보입니다.');
+    }
+
+    const docId = doc.id;
+    const filename = doc.original_filename || 
+                    doc.file_name || 
+                    doc.title || 
+                    doc.name || 
+                    `document_${docId}`;
+
+    try {
+      console.log(`Downloading document ID: ${docId}, filename: ${filename}`);
+      
+      const response = await api.get(`/download/${docId}`, {
+        responseType: 'blob', // Essential for file downloads
+        timeout: 30000, // 30 second timeout for downloads
+      });
+
+      // Validate response
+      if (!response.data || response.data.size === 0) {
+        throw new Error('다운로드된 파일이 비어있습니다.');
+      }
+
+      // Create blob link for download
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create temporary download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.style.display = 'none';
+      
+      // Set download filename with proper extension
+      let downloadFilename = filename;
+      if (!downloadFilename.includes('.')) {
+        // Add default extension if none exists
+        const contentType = response.headers['content-type'] || '';
+        if (contentType.includes('pdf')) {
+          downloadFilename += '.pdf';
+        } else if (contentType.includes('text')) {
+          downloadFilename += '.txt';
+        } else {
+          downloadFilename += '.pdf'; // Default fallback
+        }
+      }
+      
+      link.setAttribute('download', downloadFilename);
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      console.log(`Successfully downloaded: ${downloadFilename}`);
+      return { 
+        success: true, 
+        filename: downloadFilename,
+        size: blob.size 
+      };
+      
+    } catch (error) {
+      console.error('Download failed:', error);
+      
+      // Enhanced error handling with detailed messages
+      let errorMessage = '파일 다운로드에 실패했습니다.';
+      let errorDetails = '';
+      
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        errorMessage = '다운로드 시간이 초과되었습니다.';
+        errorDetails = '파일이 너무 크거나 네트워크 연결이 느립니다. 잠시 후 다시 시도해주세요.';
+      } else if (error.response) {
+        const status = error.response.status;
+        let serverError = '';
+        
+        // Try to extract server error message
+        try {
+          if (error.response.data instanceof Blob) {
+            const text = await error.response.data.text();
+            const errorData = JSON.parse(text);
+            serverError = errorData.error || errorData.details || '';
+          } else if (typeof error.response.data === 'object') {
+            serverError = error.response.data.error || error.response.data.details || '';
+          }
+        } catch (parseError) {
+          console.warn('Could not parse server error response:', parseError);
+        }
+        
+        if (status === 404) {
+          errorMessage = '파일을 찾을 수 없습니다.';
+          errorDetails = '파일이 삭제되었거나 이동되었을 수 있습니다. 관리자에게 문의하세요.';
+        } else if (status === 403) {
+          errorMessage = '파일에 접근할 권한이 없습니다.';
+          errorDetails = '관리자에게 권한을 요청하세요.';
+        } else if (status >= 500) {
+          errorMessage = '서버 오류로 다운로드에 실패했습니다.';
+          errorDetails = '잠시 후 다시 시도하거나 관리자에게 문의하세요.';
+        } else if (serverError) {
+          errorMessage = serverError;
+        }
+      } else if (error.request) {
+        errorMessage = '서버에 연결할 수 없습니다.';
+        errorDetails = '네트워크 연결을 확인하고 다시 시도해주세요.';
+      } else if (error.message.includes('비어있습니다')) {
+        errorMessage = '다운로드할 파일 데이터를 받을 수 없습니다.';
+        errorDetails = '서버에서 올바른 파일을 전송하지 못했습니다.';
+      }
+      
+      const fullErrorMsg = errorDetails ? `${errorMessage} ${errorDetails}` : errorMessage;
+      console.error('Final download error:', fullErrorMsg);
+      throw new Error(fullErrorMsg);
+    }
   }
 };
 

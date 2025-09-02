@@ -113,7 +113,7 @@ const DocumentTable = ({
               <td>{doc.chunks}</td>
               <td>
                 <div className="document-actions">
-                  {/* {onDownloadDocument && (
+                  {onDownloadDocument && (
                     <button 
                       className="action-btn download"
                       onClick={() => onDownloadDocument(doc)}
@@ -121,7 +121,7 @@ const DocumentTable = ({
                     >
                       <FontAwesomeIcon icon={faDownload} />
                     </button>
-                  )} */}
+                  )}
                   <button 
                     className="action-btn reprocess"
                     onClick={() => handleReprocessDocument(doc.originalDoc?.id || doc.id)}

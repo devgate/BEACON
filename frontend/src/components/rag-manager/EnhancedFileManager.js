@@ -13,6 +13,7 @@ import DocumentTable from './DocumentTable';
 import EmbeddingConfig from './EmbeddingConfig';
 import ChunkingStrategy from './ChunkingStrategy';
 import DocumentPreview from './DocumentPreview';
+import { documentService } from '../../services/api';
 import './EmbeddingConfig.css';
 import './ChunkingStrategy.css';
 import './DocumentPreview.css';
@@ -112,76 +113,90 @@ const EnhancedFileManager = ({
   };
 
   const handleDownloadDocument = async (docItem) => {
+    // Validate input
+    if (!docItem) {
+      setNotification({
+        message: '다운로드할 문서 정보가 없습니다.',
+        type: 'error'
+      });
+      return;
+    }
+
+    const docId = docItem.originalDoc?.id || docItem.id;
+    
+    // Validate document ID
+    if (!docId && docId !== 0) {
+      setNotification({
+        message: '유효하지 않은 문서 ID입니다.',
+        type: 'error'
+      });
+      return;
+    }
+
     try {
-      const docId = docItem.originalDoc?.id || docItem.id;
-      const fileName = docItem.file_name || docItem.name || 'document.pdf';
+      // Extract file information with proper fallbacks
+      const fileName = docItem.original_filename || 
+                      docItem.file_name || 
+                      docItem.name || 
+                      docItem.title || 
+                      `document_${docId}`;
       
-      console.log('Downloading document:', { 
+      console.log('Starting download:', { 
         docId, 
         fileName, 
-        docItem,
-        originalDoc: docItem.originalDoc,
-        id: docItem.id,
+        docItem: {
+          id: docItem.id,
+          original_filename: docItem.original_filename,
+          file_name: docItem.file_name,
+          name: docItem.name,
+          title: docItem.title
+        }
+      });
+      
+      // Show loading notification
+      setNotification({
+        message: `${fileName} 다운로드를 시작합니다...`,
+        type: 'info'
+      });
+      
+      // Create document object for the service
+      const documentToDownload = {
+        id: docId,
+        title: fileName,
+        original_filename: docItem.original_filename,
         file_name: docItem.file_name,
         name: docItem.name
-      });
+      };
       
-      // Use the API service for download
-      const response = await fetch(`/api/download/${docId}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/pdf,application/octet-stream,*/*'
-        }
-      });
+      // Use documentService for download
+      const result = await documentService.downloadDocument(documentToDownload);
       
-      console.log('Download response:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        // Try to get error message from response
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (e) {
-          // If response is not JSON, use status text
-        }
-        throw new Error(errorMessage);
-      }
-      
-      // Get the file blob
-      const blob = await response.blob();
-      console.log('Blob created:', blob.type, blob.size);
-      
-      // Check if blob has content
-      if (blob.size === 0) {
-        throw new Error('Downloaded file is empty');
-      }
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = url;
-      downloadLink.download = fileName;
-      downloadLink.style.display = 'none';
-      
-      // Trigger download
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      
-      // Cleanup
-      document.body.removeChild(downloadLink);
-      window.URL.revokeObjectURL(url);
-      
-      // Show success notification
+      // Show detailed success notification
+      const fileSize = result.size ? ` (${Math.round(result.size / 1024)} KB)` : '';
       setNotification({
-        message: `${fileName} 파일이 다운로드되었습니다.`,
+        message: `${result.filename}${fileSize} 파일이 성공적으로 다운로드되었습니다.`,
         type: 'success'
       });
       
+      console.log('Download completed successfully:', result);
+      
     } catch (error) {
       console.error('Download failed:', error);
+      
+      // Provide user-friendly error messages
+      let userMessage = error.message;
+      
+      // Add troubleshooting hints for common issues
+      if (error.message.includes('찾을 수 없습니다')) {
+        userMessage += ' 파일이 삭제되었거나 이동되었을 수 있습니다.';
+      } else if (error.message.includes('서버')) {
+        userMessage += ' 잠시 후 다시 시도해 주세요.';
+      } else if (error.message.includes('시간이 초과')) {
+        userMessage += ' 파일이 큰 경우 시간이 더 걸릴 수 있습니다.';
+      }
+      
       setNotification({
-        message: `파일 다운로드에 실패했습니다: ${error.message}`,
+        message: userMessage,
         type: 'error'
       });
     }

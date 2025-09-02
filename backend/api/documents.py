@@ -94,56 +94,141 @@ def extract_images_from_pdf(file_stream, document_id):
         return []
 
 def sync_documents_from_chroma():
-    """Sync global documents array with ChromaDB collections"""
+    """Sync global documents array with ChromaDB collections and verify file existence"""
     global documents
     try:
         if not CHROMA_ENABLED or not chroma_service:
             return
         
+        logger.info("🔄 Starting document synchronization from ChromaDB...")
+        
         # Get all documents from ChromaDB
         chroma_docs = chroma_service.list_all_documents()
+        logger.info(f"📋 Found {len(chroma_docs)} documents in ChromaDB")
+        
+        uploads_dir = os.path.join(os.path.dirname(__file__), '..', 'uploads')
+        synced_documents = []
+        
+        # Helper function to find actual file path
+        def find_actual_file_path(doc_id, doc_name):
+            """Find the actual file path for a document"""
+            if not os.path.exists(uploads_dir):
+                return None
+                
+            import glob
+            
+            # Try multiple patterns to find the file
+            search_patterns = [
+                f"doc_{doc_id}_*",
+                f"*{doc_id}_*",
+                f"{doc_id}.*",
+                f"*{doc_name}*" if doc_name and doc_name != 'Unknown' else None,
+                f"*{doc_id}*"
+            ]
+            
+            # Remove None patterns
+            search_patterns = [p for p in search_patterns if p]
+            
+            for pattern in search_patterns:
+                full_pattern = os.path.join(uploads_dir, pattern)
+                matches = glob.glob(full_pattern)
+                if matches:
+                    # Sort by modification time, newest first
+                    matches.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+                    actual_path = matches[0]
+                    logger.debug(f"✅ Found file for doc {doc_id} via pattern '{pattern}': {actual_path}")
+                    return actual_path
+            
+            logger.warning(f"⚠️ No file found for doc {doc_id} (patterns tried: {search_patterns})")
+            return None
         
         # Convert ChromaDB format to documents array format
-        synced_documents = []
         for doc_data in chroma_docs.values():
             doc_id = doc_data.get('document_id')
-            if doc_id:
-                # Find existing document or create from ChromaDB data
-                existing_doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
+            if not doc_id:
+                continue
                 
-                if existing_doc:
-                    # Update existing document with ChromaDB info
-                    existing_doc['chunk_count'] = doc_data.get('chunk_count', 1)
-                    # Ensure index_id is set for knowledge base collections
-                    if doc_data.get('collection') != 'documents':
-                        existing_doc['index_id'] = doc_data.get('collection')
-                    synced_documents.append(existing_doc)
+            doc_name = doc_data.get('document_name', 'Unknown')
+            logger.debug(f"🔍 Processing ChromaDB document: {doc_id} ({doc_name})")
+            
+            # Find existing document or create from ChromaDB data
+            existing_doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
+            
+            if existing_doc:
+                logger.debug(f"📄 Updating existing document: {doc_id}")
+                
+                # Update existing document with ChromaDB info
+                existing_doc['chunk_count'] = doc_data.get('chunk_count', 1)
+                
+                # Ensure index_id is set for knowledge base collections
+                collection = doc_data.get('collection', 'documents')
+                if collection != 'documents':
+                    existing_doc['index_id'] = collection
+                    existing_doc['knowledge_base_id'] = collection
+                
+                # Verify and update file path if needed
+                current_file_path = existing_doc.get('file_path')
+                if not current_file_path or not os.path.exists(current_file_path):
+                    actual_file_path = find_actual_file_path(doc_id, doc_name)
+                    if actual_file_path:
+                        existing_doc['file_path'] = actual_file_path
+                        existing_doc['file_size'] = os.path.getsize(actual_file_path)
+                        logger.info(f"✅ Updated file path for doc {doc_id}: {actual_file_path}")
+                    else:
+                        logger.warning(f"⚠️ No physical file found for existing doc {doc_id}")
+                        existing_doc['status'] = 'File Missing'
+                
+                synced_documents.append(existing_doc)
+            else:
+                logger.debug(f"📄 Creating new document entry for: {doc_id}")
+                
+                # Create document entry from ChromaDB metadata  
+                collection_id = doc_data.get('collection', 'documents')
+                index_id = collection_id if collection_id != 'documents' else None
+                
+                # Try to find the actual file
+                actual_file_path = find_actual_file_path(doc_id, doc_name)
+                
+                if actual_file_path:
+                    file_size = os.path.getsize(actual_file_path)
+                    status = 'Success'
+                    logger.info(f"✅ Found physical file for ChromaDB doc {doc_id}: {actual_file_path}")
                 else:
-                    # Create document entry from ChromaDB metadata  
-                    collection_id = doc_data.get('collection', 'documents')
-                    index_id = collection_id if collection_id != 'documents' else None
-                    
-                    synced_doc = {
-                        'id': int(doc_id) if str(doc_id).isdigit() else doc_id,
-                        'title': doc_data.get('document_name', 'Unknown'),
-                        'file_name': doc_data.get('document_name', 'Unknown'),
-                        'content': '',  # Will be loaded from file when needed
-                        'file_path': f"uploads/{doc_data.get('document_name', 'unknown.pdf')}",
-                        'uploaded_at': doc_data.get('created_at', datetime.now().isoformat()),
-                        'index_id': index_id,
-                        'knowledge_base_id': index_id,  # Add for consistency
-                        'status': 'Success',
-                        'chunk_count': doc_data.get('chunk_count', 1),
-                        'file_size': doc_data.get('total_size', 0)
-                    }
-                    synced_documents.append(synced_doc)
+                    # Fallback path if no file found
+                    actual_file_path = f"uploads/{doc_name}"
+                    file_size = doc_data.get('total_size', 0)
+                    status = 'File Missing'
+                    logger.warning(f"⚠️ No physical file found for ChromaDB doc {doc_id}, using fallback path")
+                
+                synced_doc = {
+                    'id': int(doc_id) if str(doc_id).isdigit() else doc_id,
+                    'title': doc_name,
+                    'file_name': doc_name,
+                    'original_filename': doc_name,  # Add for download consistency
+                    'content': '',  # Will be loaded from file when needed
+                    'file_path': actual_file_path,
+                    'uploaded_at': doc_data.get('created_at', datetime.now().isoformat()),
+                    'index_id': index_id,
+                    'knowledge_base_id': index_id,  # Add for consistency
+                    'status': status,
+                    'chunk_count': doc_data.get('chunk_count', 1),
+                    'file_size': file_size
+                }
+                synced_documents.append(synced_doc)
         
         # Update global documents array
         documents[:] = synced_documents
-        logger.info(f"Synced {len(synced_documents)} documents from ChromaDB")
+        
+        # Log sync results
+        files_found = len([d for d in synced_documents if d['status'] == 'Success'])
+        files_missing = len([d for d in synced_documents if d['status'] == 'File Missing'])
+        
+        logger.info(f"✅ Document sync completed: {len(synced_documents)} total, {files_found} with files, {files_missing} missing files")
         
     except Exception as e:
-        logger.error(f"Failed to sync documents from ChromaDB: {e}")
+        logger.error(f"💥 Failed to sync documents from ChromaDB: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
 @documents_bp.route('/api/documents/sync', methods=['POST'])
 def sync_documents():
@@ -599,77 +684,186 @@ def delete_multiple_documents():
 
 @documents_bp.route('/api/download/<doc_id>')
 def download_file(doc_id):
-    """Download a document file"""
-    logger.info(f"Download request for doc_id: {doc_id}")
+    """Download a document file with comprehensive error handling and improved file search"""
+    logger.info(f"📥 Download request for doc_id: {doc_id}")
     
     try:
-        logger.info(f"Looking for doc_id: {doc_id} in documents array (total: {len(documents)})")
+        # Validate doc_id format
+        try:
+            doc_id_int = int(doc_id) if str(doc_id).isdigit() else doc_id
+        except (ValueError, TypeError):
+            logger.error(f"❌ Invalid doc_id format: {doc_id}")
+            return jsonify({
+                'error': '유효하지 않은 문서 ID입니다.',
+                'details': f'Invalid document ID format: {doc_id}'
+            }), 400
         
-        # Debug: log all document IDs
+        logger.info(f"🔍 Searching for doc_id: {doc_id} in documents array (total: {len(documents)})")
+        
+        # Debug: log available document IDs (limit to first 10 for readability)  
         doc_ids = [str(d.get('id')) for d in documents]
-        logger.info(f"Available document IDs: {doc_ids}")
+        logger.info(f"📋 Available document IDs (first 10): {doc_ids[:10]}{'...' if len(doc_ids) > 10 else ''}")
         
-        # First try to find in documents array (primary method)
+        uploads_dir = os.path.join(os.path.dirname(__file__), '..', 'uploads')
+        
+        # STEP 1: Try to find in documents array first (primary method)
         doc = next((d for d in documents if str(d.get('id')) == str(doc_id)), None)
         
-        if doc and doc.get('file_path'):
-            file_path = doc['file_path']
+        if doc:
+            logger.info(f"📄 Found document record: {doc.get('title', 'Unknown')} (file_path: {doc.get('file_path', 'None')})")
             
-            # Check if original file exists
-            if os.path.exists(file_path):
-                logger.info(f"Serving original file: {file_path}")
+            # Check if stored file path exists
+            stored_file_path = doc.get('file_path')
+            if stored_file_path and os.path.exists(stored_file_path):
+                logger.info(f"✅ Using stored file path: {stored_file_path}")
+                
+                # Get filename with proper fallbacks
+                filename = (doc.get('original_filename') or 
+                           doc.get('file_name') or 
+                           doc.get('title') or 
+                           os.path.basename(stored_file_path))
+                
+                # Ensure file has proper extension
+                if not os.path.splitext(filename)[1]:
+                    file_ext = os.path.splitext(stored_file_path)[1] or '.pdf'
+                    filename = filename + file_ext
+                
+                logger.info(f"📤 Downloading as filename: {filename}")
+                
                 return send_file(
-                    file_path, 
+                    stored_file_path, 
                     as_attachment=True, 
-                    download_name=doc.get('original_filename', doc.get('title', f'document_{doc_id}.pdf'))
+                    download_name=filename,
+                    mimetype='application/octet-stream'
                 )
             else:
-                logger.warning(f"Original file not found: {file_path}")
-        
-        # Try ChromaDB approach if available
+                logger.warning(f"⚠️ Stored file path not found: {stored_file_path}")
+
+        # STEP 2: Enhanced file pattern matching in uploads directory
+        if os.path.exists(uploads_dir):
+            import glob
+            logger.info(f"🔍 Searching in uploads directory: {uploads_dir}")
+            
+            # Comprehensive pattern search with priority order
+            file_patterns = [
+                # New pattern: doc_{id}_{filename}
+                f"doc_{doc_id}_*.pdf",
+                f"doc_{doc_id}_*.docx", 
+                f"doc_{doc_id}_*.txt",
+                f"doc_{doc_id}_*",
+                
+                # Timestamp patterns: {timestamp}_{filename}
+                f"*{doc_id}_*.pdf",
+                f"*{doc_id}_*.docx",
+                f"*{doc_id}_*.txt", 
+                f"*{doc_id}_*",
+                
+                # Direct patterns: {id}.extension
+                f"{doc_id}.pdf",
+                f"{doc_id}.docx",
+                f"{doc_id}.txt",
+                f"{doc_id}.*",
+                
+                # Any file containing doc_id
+                f"*{doc_id}*"
+            ]
+            
+            for pattern in file_patterns:
+                full_pattern = os.path.join(uploads_dir, pattern)
+                matches = glob.glob(full_pattern)
+                logger.debug(f"🔎 Pattern '{pattern}': {len(matches)} matches")
+                
+                if matches:
+                    # Sort by modification time, newest first
+                    matches.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+                    file_path = matches[0]
+                    
+                    logger.info(f"✅ Found file via pattern '{pattern}': {file_path}")
+                    
+                    # Determine download filename
+                    if doc:
+                        # Use document record info if available
+                        filename = (doc.get('original_filename') or 
+                                   doc.get('file_name') or 
+                                   doc.get('title') or
+                                   os.path.basename(file_path))
+                    else:
+                        # Use actual filename if no document record
+                        filename = os.path.basename(file_path)
+                        
+                        # Clean up filename for user-friendly display
+                        if filename.startswith('doc_'):
+                            # Remove doc_{id}_ prefix
+                            parts = filename.split('_', 2)
+                            if len(parts) >= 3:
+                                filename = parts[2]
+                        elif '_' in filename and filename.split('_')[0].isdigit():
+                            # Remove timestamp prefix
+                            parts = filename.split('_', 1)
+                            if len(parts) >= 2:
+                                filename = parts[1]
+                    
+                    # Ensure proper extension
+                    if not os.path.splitext(filename)[1]:
+                        file_ext = os.path.splitext(file_path)[1] or '.pdf'
+                        filename = filename + file_ext
+                    
+                    logger.info(f"📤 Downloading as: {filename}")
+                    
+                    return send_file(
+                        file_path,
+                        as_attachment=True,
+                        download_name=filename,
+                        mimetype='application/octet-stream'
+                    )
+        else:
+            logger.error(f"❌ Uploads directory not found: {uploads_dir}")
+
+        # STEP 3: Try ChromaDB approach as fallback
         if CHROMA_ENABLED and chroma_service:
             try:
+                logger.info(f"🔍 Trying ChromaDB document info for: {doc_id}")
                 doc_info = chroma_service.get_document_info(doc_id)
                 if doc_info and doc_info.get('exists'):
-                    # Try to find original file with various naming patterns
-                    uploads_dir = os.path.join(os.path.dirname(__file__), '..', 'uploads')
-                    
-                    # Try different file patterns
-                    possible_files = [
-                        os.path.join(uploads_dir, f"doc_{doc_id}_*.pdf"),
-                        os.path.join(uploads_dir, f"doc_{doc_id}_*.docx"),
-                        os.path.join(uploads_dir, f"doc_{doc_id}_*"),
-                        os.path.join(uploads_dir, f"{doc_id}.pdf"),
-                        os.path.join(uploads_dir, f"{doc_id}.txt")
-                    ]
-                    
-                    import glob
-                    for pattern in possible_files:
-                        matches = glob.glob(pattern)
-                        if matches:
-                            file_path = matches[0]  # Take first match
-                            logger.info(f"Found file via pattern matching: {file_path}")
-                            
-                            # Get original filename from document info or use default
-                            filename = os.path.basename(file_path)
-                            if doc and doc.get('original_filename'):
-                                filename = doc['original_filename']
-                            
-                            return send_file(
-                                file_path,
-                                as_attachment=True,
-                                download_name=filename
-                            )
+                    logger.info(f"📄 ChromaDB document info: {doc_info}")
+                    # Note: ChromaDB info found but no physical file located
+                    # This suggests the file was deleted or moved
             except Exception as e:
-                logger.error(f"Error checking ChromaDB: {e}")
+                logger.error(f"❌ Error checking ChromaDB: {e}")
         
-        # If nothing found, return 404
-        logger.error(f"Document not found: {doc_id}")
-        return jsonify({'error': '파일을 찾을 수 없습니다.'}), 404
+        # If nothing found, return comprehensive 404
+        logger.error(f"❌ Document file not found for doc_id: {doc_id}")
+        
+        # Provide helpful debug information
+        available_files_sample = []
+        if os.path.exists(uploads_dir):
+            try:
+                all_files = [f for f in os.listdir(uploads_dir) if not f.startswith('.')]
+                available_files_sample = sorted(all_files)[-5:]  # Last 5 files
+            except Exception as e:
+                logger.error(f"Error reading uploads directory: {e}")
+        
+        return jsonify({
+            'error': '파일을 찾을 수 없습니다.',
+            'details': f'Document ID {doc_id} not found in file system',
+            'debug_info': {
+                'doc_in_array': doc is not None,
+                'stored_path_exists': doc.get('file_path') and os.path.exists(doc.get('file_path')) if doc else False,
+                'uploads_dir_exists': os.path.exists(uploads_dir),
+                'available_doc_ids': doc_ids[:5],
+                'recent_files_sample': available_files_sample
+            }
+        }), 404
         
     except Exception as e:
-        logger.error(f"Download error for doc_id {doc_id}: {e}")
-        return jsonify({'error': f'파일 다운로드 중 오류가 발생했습니다: {str(e)}'}), 500
+        logger.error(f"💥 Download error for doc_id {doc_id}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        return jsonify({
+            'error': f'파일 다운로드 중 오류가 발생했습니다: {str(e)}',
+            'details': str(e)
+        }), 500
 
 @documents_bp.route('/api/documents/<int:doc_id>/reprocess', methods=['POST'])
 def reprocess_document(doc_id):
