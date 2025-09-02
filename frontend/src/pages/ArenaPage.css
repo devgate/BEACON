@@ -17,7 +17,7 @@
 
 /* Top: Header with Model Selection */
 .arena-header {
-  padding: 0.75rem 2rem;
+  padding: 0.3rem 2rem;
   margin-top: 60px; /* Account for main header (60px) */
   background: rgba(30, 41, 59, 0.95);
   backdrop-filter: blur(8px);
@@ -104,6 +104,8 @@
   gap: 0.25rem;
   margin-top: 0.25rem;
   font-size: 0.625rem;
+  min-height: 1.5rem;
+  justify-content: center;
 }
 
 .model-tags {
@@ -166,7 +168,7 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 1rem;
+  padding: 0.5rem;
   animation: welcomeFadeIn 0.8s ease-out;
 }
 

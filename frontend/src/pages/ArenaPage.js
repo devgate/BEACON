@@ -364,14 +364,14 @@ const ArenaPage = () => {
         </select>
         
         {/* Show selected model info */}
-        {selectedModel && (
-          <div className="selected-model-info">
+        <div className="selected-model-info">
+          {selectedModel && (
             <div className="model-tags">
               <span className={`tag speed-${selectedModel.speed}`}>{selectedModel.speed}</span>
               <span className={`tag cost-${selectedModel.cost}`}>{selectedModel.cost}</span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };
