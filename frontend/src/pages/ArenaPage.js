@@ -27,6 +27,8 @@ const ArenaPage = () => {
   const [rightModel, setRightModel] = useState(null);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [leftProgress, setLeftProgress] = useState(0);
+  const [rightProgress, setRightProgress] = useState(0);
   const [currentComparison, setCurrentComparison] = useState(null);
   const [bedrockHealth, setBedrockHealth] = useState(null);
   const [inputError, setInputError] = useState('');
@@ -165,9 +167,28 @@ const ArenaPage = () => {
 
     setInputError('');
     setIsLoading(true);
+    setLeftProgress(0);
+    setRightProgress(0);
 
     const messageToSend = currentMessage;
     setCurrentMessage('');
+
+    // Progress simulation for both models
+    const leftProgressInterval = setInterval(() => {
+      setLeftProgress(prev => {
+        if (prev >= 90) return prev; // Stop at 90% until real response
+        const increment = Math.random() * 12 + 3; // Random increment 3-15%
+        return Math.min(prev + increment, 90); // Cap at 90%
+      });
+    }, 150 + Math.random() * 100); // Slightly different timing
+
+    const rightProgressInterval = setInterval(() => {
+      setRightProgress(prev => {
+        if (prev >= 90) return prev; // Stop at 90% until real response
+        const increment = Math.random() * 12 + 3; // Random increment 3-15%
+        return Math.min(prev + increment, 90); // Cap at 90%
+      });
+    }, 200 + Math.random() * 100); // Different timing to show variation
 
     try {
       const startTime = Date.now();
@@ -182,6 +203,12 @@ const ArenaPage = () => {
           max_tokens: 2048
         }
       });
+
+      // Complete progress
+      clearInterval(leftProgressInterval);
+      clearInterval(rightProgressInterval);
+      setLeftProgress(100);
+      setRightProgress(100);
 
       const endTime = Date.now();
 
@@ -199,6 +226,12 @@ const ArenaPage = () => {
 
     } catch (error) {
       console.error('Failed to get arena responses:', error);
+      
+      // Complete progress on error
+      clearInterval(leftProgressInterval);
+      clearInterval(rightProgressInterval);
+      setLeftProgress(100);
+      setRightProgress(100);
       
       // Show error message
       setCurrentComparison({
@@ -227,6 +260,11 @@ const ArenaPage = () => {
       });
     } finally {
       setIsLoading(false);
+      // Reset progress after a brief delay
+      setTimeout(() => {
+        setLeftProgress(0);
+        setRightProgress(0);
+      }, 1000);
     }
   };
 
@@ -364,7 +402,56 @@ const ArenaPage = () => {
 
       {/* Middle: Chat Results */}
       <div className="arena-content">
-        {!currentComparison ? (
+        {isLoading ? (
+          <div className="arena-loading">
+            <div className="loading-content">
+              <div className="loading-spinner-large">
+                <FontAwesomeIcon icon={faSpinner} spin />
+              </div>
+              <h3 className="loading-title">AI 응답 생성 중</h3>
+              <p className="loading-description">
+                선택한 두 모델이 동시에 응답을 생성하고 있습니다...
+              </p>
+              <div className="loading-models-progress">
+                <div className="loading-model-progress">
+                  <div className="model-info">
+                    <div className="model-name">{leftModel?.name}</div>
+                    <div className="model-status">
+                      <FontAwesomeIcon icon={faSpinner} spin size="sm" />
+                      <span>{Math.round(leftProgress)}%</span>
+                    </div>
+                  </div>
+                  <div className="progress-bar-model">
+                    <div 
+                      className="progress-fill left-progress" 
+                      style={{ width: `${leftProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div className="loading-divider">
+                  <span>VS</span>
+                </div>
+
+                <div className="loading-model-progress">
+                  <div className="model-info">
+                    <div className="model-name">{rightModel?.name}</div>
+                    <div className="model-status">
+                      <FontAwesomeIcon icon={faSpinner} spin size="sm" />
+                      <span>{Math.round(rightProgress)}%</span>
+                    </div>
+                  </div>
+                  <div className="progress-bar-model">
+                    <div 
+                      className="progress-fill right-progress" 
+                      style={{ width: `${rightProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : !currentComparison ? (
           <div className="arena-welcome">
             <div className="welcome-content">
               <div className="welcome-hero">
@@ -455,7 +542,7 @@ const ArenaPage = () => {
               </div>
             </div>
           </div>
-        ) : (
+        ) : currentComparison ? (
           <div className="arena-comparison">
             {/* Model Responses */}
             <div className="responses-container" ref={responsesRef}>
@@ -492,6 +579,21 @@ const ArenaPage = () => {
                 rightModel={currentComparison.rightModel}
               />
             )} */}
+          </div>
+        ) : (
+          // Empty state when no comparison and not loading
+          <div className="arena-welcome">
+            <div className="welcome-content">
+              <div className="welcome-hero">
+                <div className="hero-icon">
+                  <FontAwesomeIcon icon={faRocket} />
+                </div>
+                <h1 className="welcome-title">준비 완료</h1>
+                <p className="welcome-subtitle">
+                  모델이 선택되었습니다. 하단에서 메시지를 보내주세요.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>

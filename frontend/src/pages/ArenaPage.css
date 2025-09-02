@@ -941,3 +941,235 @@
     border-color: #00d4ff;
   }
 }
+
+/* Arena Loading State */
+.arena-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 2rem;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.loading-content {
+  text-align: center;
+  max-width: 600px;
+  width: 100%;
+}
+
+.loading-spinner-large {
+  margin-bottom: 2rem;
+  color: #00d4ff;
+  font-size: 3rem;
+  animation: pulse 2s infinite;
+}
+
+.loading-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 0.75rem;
+  margin: 0;
+}
+
+.loading-description {
+  font-size: 1rem;
+  color: #94a3b8;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.loading-progress {
+  margin-bottom: 2rem;
+}
+
+.progress-bar-arena {
+  width: 100%;
+  height: 6px;
+  background: rgba(71, 85, 105, 0.4);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, 
+    rgba(0, 212, 255, 0.8) 0%, 
+    rgba(14, 165, 233, 1) 25%, 
+    rgba(0, 212, 255, 1) 50%, 
+    rgba(14, 165, 233, 1) 75%, 
+    rgba(0, 212, 255, 0.8) 100%
+  );
+  background-size: 300% 100%;
+  border-radius: 3px;
+  animation: progressShimmer 1.5s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+  transition: width 0.3s ease-out;
+  min-width: 0;
+}
+
+.loading-models-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 2rem;
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.loading-model-progress {
+  flex: 1;
+  min-width: 200px;
+}
+
+.model-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.model-info .model-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.model-info .model-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #00d4ff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.progress-bar-model {
+  width: 100%;
+  height: 8px;
+  background: rgba(71, 85, 105, 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.left-progress {
+  background: linear-gradient(90deg, 
+    rgba(34, 197, 94, 0.8) 0%, 
+    rgba(34, 197, 94, 1) 50%, 
+    rgba(34, 197, 94, 0.8) 100%
+  );
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+.right-progress {
+  background: linear-gradient(90deg, 
+    rgba(236, 72, 153, 0.8) 0%, 
+    rgba(236, 72, 153, 1) 50%, 
+    rgba(236, 72, 153, 0.8) 100%
+  );
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.4);
+}
+
+.loading-divider {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(51, 65, 85, 0.3);
+  border: 1px solid rgba(71, 85, 105, 0.4);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+/* Loading Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes progressShimmer {
+  0% {
+    background-position: -300% 0;
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    background-position: 300% 0;
+    opacity: 0.7;
+  }
+}
+
+/* Mobile responsiveness for loading */
+@media (max-width: 768px) {
+  .arena-loading {
+    min-height: 300px;
+    padding: 1.5rem;
+  }
+  
+  .loading-content {
+    max-width: 400px;
+  }
+  
+  .loading-spinner-large {
+    font-size: 2.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .loading-title {
+    font-size: 1.25rem;
+  }
+  
+  .loading-description {
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .loading-models-progress {
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+  
+  .loading-model-progress {
+    min-width: 250px;
+  }
+  
+  .loading-divider {
+    width: 30px;
+    height: 30px;
+    font-size: 0.875rem;
+    transform: rotate(90deg);
+  }
+}
