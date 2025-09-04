@@ -110,9 +110,50 @@ const ChatMessage = ({ message }) => {
       )}
 
       {/* Model and cost information for AI messages */}
-      {message.type === 'ai' && !message.isLoading && (message.modelUsed || message.tokensUsed || message.processingTime) && (
+      {message.type === 'ai' && !message.isLoading && (message.modelUsed || message.tokensUsed || message.processingTime || message.isAgentResponse) && (
         <div className="message-metadata">
-          {message.modelUsed && (
+          {/* AWS Agent specific metadata */}
+          {message.isAgentResponse && (
+            <>
+              <div className="metadata-item agent-badge">
+                <FontAwesomeIcon icon={faBrain} />
+                <span>{message.agentUsed || 'AWS Agent'}</span>
+                <span className="agent-type-badge">AWS Bedrock</span>
+              </div>
+              
+              {message.processingTime && (
+                <div className="metadata-item">
+                  <FontAwesomeIcon icon={faClock} />
+                  <span>{message.processingTime}s</span>
+                </div>
+              )}
+
+              {message.responseLength && (
+                <div className="metadata-item">
+                  <FontAwesomeIcon icon={faFileText} />
+                  <span>{message.responseLength} chars</span>
+                </div>
+              )}
+
+              {message.chunkCount && message.chunkCount > 0 && (
+                <div className="metadata-item">
+                  <FontAwesomeIcon icon={faExternalLinkAlt} />
+                  <span>{message.chunkCount} chunks</span>
+                </div>
+              )}
+
+              {message.sessionId && (
+                <div className="metadata-item session-info">
+                  <span title={`Session: ${message.sessionId}`}>
+                    Session: {message.sessionId.substring(0, 8)}...
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Regular model metadata for non-agent responses */}
+          {!message.isAgentResponse && message.modelUsed && (
             <div className="metadata-item">
               <FontAwesomeIcon icon={faBrain} />
               <span>{message.modelUsed.split('.').pop()}</span>
@@ -124,7 +165,7 @@ const ChatMessage = ({ message }) => {
             </div>
           )}
           
-          {message.processingTime && (
+          {!message.isAgentResponse && message.processingTime && (
             <div className="metadata-item">
               <FontAwesomeIcon icon={faClock} />
               <span>{message.processingTime.toFixed(2)}s</span>

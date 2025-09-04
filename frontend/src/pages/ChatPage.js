@@ -3,7 +3,7 @@ import ChatMessage from '../components/ChatMessage';
 import ChatInput from '../components/ChatInput';
 import ModelSelectorDropdown from '../components/ModelSelectorDropdown';
 import './ChatPage.css';
-import { chatService, bedrockService, documentService } from '../services/api';
+import { chatService, bedrockService, documentService, awsAgentService } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faComments, faFileAlt, faGlobe, faFile, faBars, faTimes, faCheckCircle, faExclamationCircle, faBrain, faBolt } from '@fortawesome/free-solid-svg-icons';
 
@@ -15,6 +15,8 @@ const ChatPage = () => {
   const [selectedSource, setSelectedSource] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [knowledgeBases, setKnowledgeBases] = useState([]);
+  const [availableAgents, setAvailableAgents] = useState([]);
+  const [agentSessionId, setAgentSessionId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const messagesEndRef = useRef(null);
@@ -23,6 +25,7 @@ const ChatPage = () => {
     loadBedrockHealth();
     loadUploadedFiles();
     loadKnowledgeBases();
+    loadAvailableAgents();
 
     // Mobile detection
     const checkMobile = () => {
@@ -112,6 +115,36 @@ const ChatPage = () => {
     }
   };
 
+  const loadAvailableAgents = async () => {
+    try {
+      const response = await awsAgentService.getAvailableAgents();
+      if (response && response.agents) {
+        setAvailableAgents(response.agents);
+      } else {
+        // Set default agent if no response
+        setAvailableAgents([
+          {
+            id: 'QFZOZZY6LA',
+            alias_id: 'HZSY9X6YYZ',
+            name: '기본 Agent',
+            description: 'Default AWS Bedrock Agent'
+          }
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to load available agents:', error);
+      // Set default agent on error
+      setAvailableAgents([
+        {
+          id: 'QFZOZZY6LA',
+          alias_id: 'HZSY9X6YYZ',
+          name: '기본 Agent',
+          description: 'Default AWS Bedrock Agent'
+        }
+      ]);
+    }
+  };
+
   const handleSendMessage = async (message) => {
     if (!message.trim()) return;
 
@@ -126,46 +159,91 @@ const ChatPage = () => {
     setIsLoading(true);
 
     try {
-      // Determine if RAG should be used and get the knowledge base ID
-      const useRag = selectedSource && selectedSource.startsWith('kb_');
-      const knowledgeBaseId = useRag ? selectedSource.replace('kb_', '') : null;
+      let response;
       
-      console.log('Chat request preparation:', {
-        selectedSource,
-        useRag,
-        knowledgeBaseId,
-        selectedModel: selectedModel?.model_id
-      });
-      
-      const settings = {
-        use_rag: useRag,
-        knowledge_base_id: knowledgeBaseId,
-        temperature: 0.7,
-        max_tokens: 2048,
-        top_k_documents: 5
-      };
+      // Check if AWS Agent is selected
+      if (selectedSource && selectedSource.startsWith('agent_')) {
+        const agentId = selectedSource.replace('agent_', '');
+        const selectedAgent = availableAgents.find(agent => agent.id === agentId);
+        
+        if (selectedAgent) {
+          console.log('Sending to AWS Agent:', {
+            agentId,
+            agentAliasId: selectedAgent.alias_id,
+            sessionId: agentSessionId
+          });
+          
+          response = await awsAgentService.sendAgentMessage(message, {
+            agent_id: selectedAgent.id,
+            agent_alias_id: selectedAgent.alias_id,
+            session_id: agentSessionId || null  // Ensure null instead of undefined
+          });
+          
+          // Update session ID if it's a new session
+          if (!agentSessionId && response.session_id) {
+            setAgentSessionId(response.session_id);
+          }
+          
+          // Format response for display
+          const aiMessage = {
+            id: Date.now() + 1,
+            content: response.response,
+            type: 'ai',
+            timestamp: new Date(),
+            agentUsed: response.agent_name || selectedAgent.name,
+            sessionId: response.session_id,
+            agentType: 'aws_bedrock_agent',
+            processingTime: response.processing_time,
+            responseLength: response.response_length,
+            chunkCount: response.chunk_count,
+            agentId: response.agent_id,
+            agentRegion: response.region,
+            isAgentResponse: true
+          };
+          setMessages(prev => [...prev, aiMessage]);
+        }
+      } else {
+        // Regular RAG or non-RAG chat
+        const useRag = selectedSource && selectedSource.startsWith('kb_');
+        const knowledgeBaseId = useRag ? selectedSource.replace('kb_', '') : null;
+        
+        console.log('Chat request preparation:', {
+          selectedSource,
+          useRag,
+          knowledgeBaseId,
+          selectedModel: selectedModel?.model_id
+        });
+        
+        const settings = {
+          use_rag: useRag,
+          knowledge_base_id: knowledgeBaseId,
+          temperature: 0.7,
+          max_tokens: 2048,
+          top_k_documents: 5
+        };
 
-      const response = await chatService.sendMessage(
-        message, 
-        selectedModel?.model_id,
-        settings
-      );
-      
-      // Add AI response
-      const aiMessage = {
-        id: Date.now() + 1,
-        content: response.response,
-        type: 'ai',
-        timestamp: new Date(),
-        images: response.images || [],
-        referencedDocs: response.referenced_docs || [],
-        modelUsed: response.model_used,
-        ragEnabled: response.rag_enabled,
-        tokensUsed: response.tokens_used,
-        costEstimate: response.cost_estimate,
-        processingTime: response.processing_time
-      };
-      setMessages(prev => [...prev, aiMessage]);
+        response = await chatService.sendMessage(
+          message, 
+          selectedModel?.model_id,
+          settings
+        );
+        
+        // Add AI response
+        const aiMessage = {
+          id: Date.now() + 1,
+          content: response.response,
+          type: 'ai',
+          timestamp: new Date(),
+          images: response.images || [],
+          referencedDocs: response.referenced_docs || [],
+          modelUsed: response.model_used,
+          ragEnabled: response.rag_enabled,
+          tokensUsed: response.tokens_used,
+          costEstimate: response.cost_estimate,
+          processingTime: response.processing_time
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
       const errorMessage = {
@@ -236,16 +314,17 @@ const ChatPage = () => {
             <div className="dropdown-section">
               <div className="source-header">
                 <h4>소스 선택</h4>
-                <div className={`source-status-info ${selectedSource && selectedSource.startsWith('kb_') ? 'healthy' : 
+                <div className={`source-status-info ${selectedSource && (selectedSource.startsWith('kb_') || selectedSource.startsWith('agent_')) ? 'healthy' : 
                   selectedSource ? 'warning' : 'error'}`}>
                   <FontAwesomeIcon 
-                    icon={selectedSource && selectedSource.startsWith('kb_') ? faCheckCircle :
+                    icon={selectedSource && (selectedSource.startsWith('kb_') || selectedSource.startsWith('agent_')) ? faCheckCircle :
                       selectedSource ? faExclamationCircle : faExclamationCircle} 
                     className="source-status-icon" 
                   />
                   <span className="source-status-text">
                     {selectedSource ? 
-                      (selectedSource.startsWith('kb_') ? 'RAG 활성' : '일반 대화') : 
+                      (selectedSource.startsWith('kb_') ? 'RAG 활성' : 
+                       selectedSource.startsWith('agent_') ? 'Agent 활성' : '일반 대화') : 
                       '선택 안됨'
                     }
                   </span>
@@ -257,7 +336,8 @@ const ChatPage = () => {
                   <div className="trigger-content">
                     <FontAwesomeIcon 
                       icon={selectedSource ? 
-                        (selectedSource.startsWith('kb_') ? faFileAlt : faGlobe) : 
+                        (selectedSource.startsWith('kb_') ? faFileAlt : 
+                         selectedSource.startsWith('agent_') ? faBrain : faGlobe) : 
                         faFile
                       } 
                       className="source-icon" 
@@ -267,6 +347,8 @@ const ChatPage = () => {
                         {selectedSource ? 
                           (selectedSource.startsWith('kb_') ? 
                             knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.name || '지식 베이스' :
+                           selectedSource.startsWith('agent_') ?
+                            availableAgents.find(agent => agent.id === selectedSource.replace('agent_', ''))?.name || 'AWS Agent' :
                             '일반 대화 (RAG 미사용)'
                           ) : 
                           '소스를 선택하세요'
@@ -276,6 +358,8 @@ const ChatPage = () => {
                         {selectedSource ?
                           (selectedSource.startsWith('kb_') ?
                             `${knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.document_count || 0}개 문서` :
+                           selectedSource.startsWith('agent_') ?
+                            'AWS Bedrock Agent' :
                             'RAG 없는 AI 대화'
                           ) :
                           '원하는 소스를 선택하세요'
@@ -291,8 +375,8 @@ const ChatPage = () => {
                   onChange={(e) => setSelectedSource(e.target.value)}
                   aria-label="지식 소스 선택"
                 >
-                  <option value="">💬 일반 대화 (RAG 미사용)</option>
-                  <optgroup label="📚 지식 베이스">
+                  <option value="">💬 일반 대화 (기본 모드)</option>
+                  <optgroup label="📚 문서 기반">
                     {knowledgeBases.length > 0 ? (
                       knowledgeBases.map(kb => (
                         <option key={kb.id} value={`kb_${kb.id}`}>
@@ -300,7 +384,18 @@ const ChatPage = () => {
                         </option>
                       ))
                     ) : (
-                      <option value="" disabled>지식 베이스가 없습니다</option>
+                      <option value="" disabled>저장된 문서가 없습니다</option>
+                    )}
+                  </optgroup>
+                  <optgroup label="🤖 AWS Agent">
+                    {availableAgents.length > 0 ? (
+                      availableAgents.map(agent => (
+                        <option key={agent.id} value={`agent_${agent.id}`}>
+                          🤖 {agent.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>사용 가능한 Agent가 없습니다</option>
                     )}
                   </optgroup>
                 </select>
@@ -329,6 +424,37 @@ const ChatPage = () => {
                           <div className="kb-detail-item">
                             <span className="label">상태:</span>
                             <span className={`value status ${kb.status}`}>{kb.status === 'active' ? '활성' : kb.status}</span>
+                          </div>
+                        </div>
+                      </>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              {/* AWS Agent Info Card */}
+              {selectedSource && selectedSource.startsWith('agent_') && (
+                <div className="kb-info-card">
+                  {(() => {
+                    const agent = availableAgents.find(a => a.id === selectedSource.replace('agent_', ''));
+                    return agent ? (
+                      <>
+                        <div className="kb-info-header">
+                          <FontAwesomeIcon icon={faBrain} />
+                          <span>활성 AWS Agent</span>
+                        </div>
+                        <div className="kb-details">
+                          <div className="kb-detail-item">
+                            <span className="label">이름:</span>
+                            <span className="value">{agent.name}</span>
+                          </div>
+                          <div className="kb-detail-item">
+                            <span className="label">Agent ID:</span>
+                            <span className="value">{agent.id}</span>
+                          </div>
+                          <div className="kb-detail-item">
+                            <span className="label">설명:</span>
+                            <span className="value">{agent.description || 'AWS Bedrock Agent'}</span>
                           </div>
                         </div>
                       </>

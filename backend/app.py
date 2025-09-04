@@ -38,6 +38,7 @@ from api.knowledge import knowledge_bp, init_knowledge_module
 from api.bedrock import bedrock_bp, init_bedrock_module
 from api.chroma import chroma_bp, init_chroma_module
 from api.arena import arena_bp, init_arena_module
+from api.aws_agent import aws_agent_bp, init_aws_agent_module
 
 def create_app():
     """Create and configure the Flask application"""
@@ -204,6 +205,7 @@ def register_blueprints(app, app_context):
     init_bedrock_module(app_context)
     init_chroma_module(app_context)
     init_arena_module(app_context)
+    init_aws_agent_module(app_context)
     
     # Register blueprints
     app.register_blueprint(misc_bp)
@@ -213,6 +215,7 @@ def register_blueprints(app, app_context):
     app.register_blueprint(bedrock_bp)
     app.register_blueprint(chroma_bp)
     app.register_blueprint(arena_bp)
+    app.register_blueprint(aws_agent_bp)
     
     return app
 

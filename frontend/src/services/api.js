@@ -480,3 +480,28 @@ export const arenaService = {
     }
   }
 };
+
+export const awsAgentService = {
+  async sendAgentMessage(message, config = {}) {
+    const data = {
+      message,
+      agent_id: config.agent_id,
+      agent_alias_id: config.agent_alias_id,
+      session_id: config.session_id
+    };
+    
+    console.log('Sending AWS Agent request:', {
+      message: message.substring(0, 50) + '...',
+      agent_id: data.agent_id,
+      session_id: data.session_id
+    });
+    
+    const response = await api.post('/aws-agent/chat', data);
+    return response.data;
+  },
+  
+  async getAvailableAgents() {
+    const response = await api.get('/aws-agent/agents');
+    return response.data;
+  }
+};
