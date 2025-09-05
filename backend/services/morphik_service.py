@@ -152,12 +152,36 @@ class MorphikService:
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error: {e}")
             error_msg = f"Morphik API error ({response.status_code})"
+            
+            # Check for token/quota limit errors
+            if response.status_code == 429:  # Too Many Requests
+                raise MorphikError("Morphik AI 사용 한도를 초과했습니다. 잠시 후 다시 시도해주세요.")
+            elif response.status_code == 402:  # Payment Required
+                raise MorphikError("Morphik AI 토큰이 부족합니다. 계정의 사용 한도를 확인해주세요.")
+            elif response.status_code == 403:  # Forbidden
+                try:
+                    error_data = response.json()
+                    error_text = error_data.get('message', '').lower()
+                    if any(keyword in error_text for keyword in ['token', 'quota', 'limit', 'exceeded', 'usage']):
+                        raise MorphikError("Morphik AI 사용 한도가 초과되었습니다. 계정 설정을 확인해주세요.")
+                except:
+                    pass
+                raise MorphikError("Morphik AI 서비스에 대한 접근이 거부되었습니다. 인증 정보를 확인해주세요.")
+            
             try:
                 error_data = response.json()
                 if 'message' in error_data:
+                    error_text = error_data['message'].lower()
+                    # Check for common quota/limit error messages
+                    if any(keyword in error_text for keyword in ['token limit', 'quota exceeded', 'usage limit', 'rate limit']):
+                        raise MorphikError("Morphik AI의 사용 한도를 초과했습니다. 계정의 토큰 한도를 확인하고 잠시 후 다시 시도해주세요.")
                     error_msg += f": {error_data['message']}"
             except:
                 error_msg += f": {response.text}"
+                # Check response text for quota indicators
+                if any(keyword in response.text.lower() for keyword in ['token', 'quota', 'limit', 'exceeded']):
+                    raise MorphikError("Morphik AI 서비스의 사용 한도가 초과되었습니다. 계정 상태를 확인해주세요.")
+                    
             raise MorphikError(error_msg)
         except Exception as e:
             logger.error(f"Unexpected error: {e}")

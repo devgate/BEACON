@@ -514,8 +514,31 @@ export const morphikService = {
   },
 
   async query(queryData) {
-    const response = await api.post('/morphik/query', queryData);
-    return response.data;
+    try {
+      const response = await api.post('/morphik/query', queryData);
+      return response.data;
+    } catch (error) {
+      // Check if it's a morphik quota error
+      if (error.response && error.response.status === 429) {
+        const errorData = error.response.data || {};
+        const errorMessage = errorData.message || 'Morphik AI의 사용 한도가 초과되었습니다. 잠시 후 다시 시도해주세요.';
+        
+        // Create enhanced error with quota information
+        const quotaError = new Error(errorMessage);
+        quotaError.response = {
+          data: {
+            ...errorData,
+            quota_error: true,
+            error: 'Morphik quota exceeded'
+          },
+          status: 429
+        };
+        throw quotaError;
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   },
 
   async retrieveChunks(retrieveData) {

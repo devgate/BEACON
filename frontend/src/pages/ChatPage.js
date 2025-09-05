@@ -281,11 +281,36 @@ const ChatPage = () => {
       }
     } catch (error) {
       console.error('Failed to send message:', error);
+      
+      let errorContent = '죄송합니다. 오류가 발생했습니다.';
+      
+      // Check if it's a morphik quota error
+      if (error.response) {
+        const errorData = error.response.data || {};
+        
+        // Check for morphik quota error
+        if (errorData.quota_error || errorData.error === 'Morphik quota exceeded') {
+          errorContent = errorData.message || 'Morphik AI의 사용 한도가 초과되었습니다. 잠시 후 다시 시도하거나 다른 AI 모델을 사용해주세요.';
+        } else if (errorData.message) {
+          errorContent = errorData.message;
+        }
+      } else if (error.message) {
+        // Check error message for morphik-related terms
+        const errorText = error.message.toLowerCase();
+        if (errorText.includes('사용 한도') || errorText.includes('토큰') || 
+            errorText.includes('morphik') || errorText.includes('quota') || 
+            errorText.includes('limit')) {
+          errorContent = error.message;
+        }
+      }
+      
       const errorMessage = {
         id: Date.now() + 1,
-        content: '죄송합니다. 오류가 발생했습니다.',
+        content: errorContent,
         type: 'ai',
-        timestamp: new Date()
+        timestamp: new Date(),
+        isError: true,
+        morphikQuotaError: error.response?.data?.quota_error || false
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {

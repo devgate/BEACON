@@ -157,6 +157,19 @@ def morphik_query():
         
     except Exception as e:
         logger.error(f"Morphik query failed: {e}")
+        
+        # Check if it's a quota/limit error
+        error_message = str(e).lower()
+        if any(keyword in error_message for keyword in ['사용 한도', '토큰', 'limit', 'quota', 'exceeded']):
+            return jsonify({
+                'error': 'Morphik quota exceeded',
+                'message': str(e),
+                'response': f'죄송합니다. {str(e)} 나중에 다시 시도하거나 다른 AI 모델을 사용해 주세요.',
+                'morphik_enabled': False,
+                'quota_error': True,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            }), 429  # Too Many Requests
+        
         return jsonify({
             'error': 'Query processing failed',
             'message': str(e),
@@ -227,6 +240,18 @@ def morphik_retrieve():
         
     except Exception as e:
         logger.error(f"Morphik chunk retrieval failed: {e}")
+        
+        # Check if it's a quota/limit error
+        error_message = str(e).lower()
+        if any(keyword in error_message for keyword in ['사용 한도', '토큰', 'limit', 'quota', 'exceeded']):
+            return jsonify({
+                'error': 'Morphik quota exceeded',
+                'message': str(e),
+                'chunks': [],
+                'morphik_enabled': False,
+                'quota_error': True
+            }), 429
+            
         return jsonify({
             'error': 'Chunk retrieval failed',
             'message': str(e),
