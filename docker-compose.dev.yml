@@ -24,6 +24,8 @@ services:
       - DYNAMODB_SESSIONS_TABLE=${DYNAMODB_SESSIONS_TABLE:-dev-beacon-sessions}
       - DYNAMODB_USAGE_TABLE=${DYNAMODB_USAGE_TABLE:-dev-beacon-usage}
       - CHROMA_DATA_DIR=/app/chroma_data
+      - MORPHIK_URI=${MORPHIK_URI}
+      - MORPHIK_TOKEN=${MORPHIK_TOKEN}
     networks:
       - beacon-network
     command: python app.py  # Flask 개발 서버 실행

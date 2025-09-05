@@ -505,3 +505,44 @@ export const awsAgentService = {
     return response.data;
   }
 };
+
+// Morphik AI service
+export const morphikService = {
+  async getHealth() {
+    const response = await api.get('/morphik/health');
+    return response.data;
+  },
+
+  async query(queryData) {
+    const response = await api.post('/morphik/query', queryData);
+    return response.data;
+  },
+
+  async retrieveChunks(retrieveData) {
+    const response = await api.post('/morphik/retrieve', retrieveData);
+    return response.data;
+  },
+
+  async getModels() {
+    const response = await api.get('/morphik/models');
+    return response.data;
+  },
+
+  async listDocuments(params = {}) {
+    const queryParams = new URLSearchParams();
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.offset) queryParams.append('offset', params.offset);
+    if (params.filters) queryParams.append('filters', JSON.stringify(params.filters));
+    
+    const queryString = queryParams.toString();
+    const endpoint = queryString ? `/morphik/documents?${queryString}` : '/morphik/documents';
+    
+    const response = await api.get(endpoint);
+    return response.data;
+  },
+
+  async ingestText(textData) {
+    const response = await api.post('/morphik/ingest', textData);
+    return response.data;
+  }
+};

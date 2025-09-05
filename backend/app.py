@@ -30,6 +30,17 @@ except ImportError as e:
     DocumentChunker = None
     ENHANCED_PROCESSING_AVAILABLE = False
 
+# Import Morphik service (with fallback)
+try:
+    from services.morphik_service import MorphikService, create_morphik_service
+    MORPHIK_AVAILABLE = True
+    logger.info("Morphik service module loaded successfully")
+except ImportError as e:
+    logger.warning(f"Morphik service not available: {e}")
+    MorphikService = None
+    create_morphik_service = None
+    MORPHIK_AVAILABLE = False
+
 # Import API modules
 from api.misc import misc_bp
 from api.chat import chat_bp, init_chat_module
@@ -39,6 +50,7 @@ from api.bedrock import bedrock_bp, init_bedrock_module
 from api.chroma import chroma_bp, init_chroma_module
 from api.arena import arena_bp, init_arena_module
 from api.aws_agent import aws_agent_bp, init_aws_agent_module
+from api.morphik import morphik_bp, init_morphik_module
 
 def create_app():
     """Create and configure the Flask application"""
@@ -97,6 +109,29 @@ def initialize_services():
         # Initialize RAG engine (legacy)
         rag_engine = create_rag_engine(bedrock_service, vector_store)
         context['rag_engine'] = rag_engine
+        
+        # Initialize Morphik service (if available)
+        if MORPHIK_AVAILABLE:
+            try:
+                morphik_config = {
+                    'MORPHIK_URI': os.getenv('MORPHIK_URI'),
+                    'MORPHIK_TIMEOUT': int(os.getenv('MORPHIK_TIMEOUT', '30'))
+                }
+                morphik_service = create_morphik_service(morphik_config)
+                context['morphik_service'] = morphik_service
+                context['MORPHIK_ENABLED'] = morphik_service is not None
+                if morphik_service:
+                    logger.info("Morphik service initialized successfully")
+                else:
+                    logger.warning("Morphik service creation failed")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Morphik service: {e}")
+                context['morphik_service'] = None
+                context['MORPHIK_ENABLED'] = False
+        else:
+            logger.info("Morphik not available, skipping initialization")
+            context['morphik_service'] = None
+            context['MORPHIK_ENABLED'] = False
         
         # Initialize new components (if available)
         if ENHANCED_PROCESSING_AVAILABLE:
@@ -206,6 +241,7 @@ def register_blueprints(app, app_context):
     init_chroma_module(app_context)
     init_arena_module(app_context)
     init_aws_agent_module(app_context)
+    init_morphik_module(app_context)
     
     # Register blueprints
     app.register_blueprint(misc_bp)
@@ -216,6 +252,7 @@ def register_blueprints(app, app_context):
     app.register_blueprint(chroma_bp)
     app.register_blueprint(arena_bp)
     app.register_blueprint(aws_agent_bp)
+    app.register_blueprint(morphik_bp)
     
     return app
 

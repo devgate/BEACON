@@ -3,9 +3,9 @@ import ChatMessage from '../components/ChatMessage';
 import ChatInput from '../components/ChatInput';
 import ModelSelectorDropdown from '../components/ModelSelectorDropdown';
 import './ChatPage.css';
-import { chatService, bedrockService, documentService, awsAgentService } from '../services/api';
+import { chatService, bedrockService, documentService, awsAgentService, morphikService } from '../services/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faComments, faFileAlt, faGlobe, faFile, faBars, faTimes, faCheckCircle, faExclamationCircle, faBrain, faBolt } from '@fortawesome/free-solid-svg-icons';
+import { faComments, faFileAlt, faGlobe, faFile, faBars, faTimes, faCheckCircle, faExclamationCircle, faBrain, faBolt, faImage, faMicroscope } from '@fortawesome/free-solid-svg-icons';
 
 const ChatPage = () => {
   const [messages, setMessages] = useState([]);
@@ -161,8 +161,43 @@ const ChatPage = () => {
     try {
       let response;
       
+      // Check if Morphik AI is selected
+      if (selectedSource === 'morphik_default') {
+        console.log('Sending to Morphik AI:', {
+          selectedSource,
+          message: message.substring(0, 50) + '...'
+        });
+        
+        const morphikConfig = {
+          query: message,
+          k: 10,
+          min_score: 0.0,
+          max_tokens: 2048,
+          temperature: 0.7,
+          use_colpali: true,  // 이미지 기반 검색 활성화
+          use_reranking: true // 검색 정확도 향상
+        };
+        
+        response = await morphikService.query(morphikConfig);
+        
+        // Format response for display
+        const aiMessage = {
+          id: Date.now() + 1,
+          content: response.response,
+          type: 'ai',
+          timestamp: new Date(),
+          modelUsed: response.model_used || 'Morphik AI',
+          processingTime: response.processing_time,
+          tokensUsed: response.tokens_used,
+          confidenceScore: response.confidence_score,
+          morphikMetadata: response.morphik_metadata,
+          isMorphikResponse: true,
+          morphikType: selectedSource
+        };
+        setMessages(prev => [...prev, aiMessage]);
+      }
       // Check if AWS Agent is selected
-      if (selectedSource && selectedSource.startsWith('agent_')) {
+      else if (selectedSource && selectedSource.startsWith('agent_')) {
         const agentId = selectedSource.replace('agent_', '');
         const selectedAgent = availableAgents.find(agent => agent.id === agentId);
         
@@ -314,17 +349,18 @@ const ChatPage = () => {
             <div className="dropdown-section">
               <div className="source-header">
                 <h4>소스 선택</h4>
-                <div className={`source-status-info ${selectedSource && (selectedSource.startsWith('kb_') || selectedSource.startsWith('agent_')) ? 'healthy' : 
+                <div className={`source-status-info ${selectedSource && (selectedSource.startsWith('kb_') || selectedSource.startsWith('agent_') || selectedSource === 'morphik_default') ? 'healthy' : 
                   selectedSource ? 'warning' : 'error'}`}>
                   <FontAwesomeIcon 
-                    icon={selectedSource && (selectedSource.startsWith('kb_') || selectedSource.startsWith('agent_')) ? faCheckCircle :
+                    icon={selectedSource && (selectedSource.startsWith('kb_') || selectedSource.startsWith('agent_') || selectedSource === 'morphik_default') ? faCheckCircle :
                       selectedSource ? faExclamationCircle : faExclamationCircle} 
                     className="source-status-icon" 
                   />
                   <span className="source-status-text">
                     {selectedSource ? 
                       (selectedSource.startsWith('kb_') ? 'RAG 활성' : 
-                       selectedSource.startsWith('agent_') ? 'Agent 활성' : '일반 대화') : 
+                       selectedSource.startsWith('agent_') ? 'Agent 활성' : 
+                       selectedSource === 'morphik_default' ? 'Morphik 활성' : '일반 대화') : 
                       '선택 안됨'
                     }
                   </span>
@@ -337,7 +373,8 @@ const ChatPage = () => {
                     <FontAwesomeIcon 
                       icon={selectedSource ? 
                         (selectedSource.startsWith('kb_') ? faFileAlt : 
-                         selectedSource.startsWith('agent_') ? faBrain : faGlobe) : 
+                         selectedSource.startsWith('agent_') ? faBrain : 
+                         selectedSource === 'morphik_default' ? faMicroscope : faGlobe) : 
                         faFile
                       } 
                       className="source-icon" 
@@ -349,6 +386,8 @@ const ChatPage = () => {
                             knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.name || '지식 베이스' :
                            selectedSource.startsWith('agent_') ?
                             availableAgents.find(agent => agent.id === selectedSource.replace('agent_', ''))?.name || 'AWS Agent' :
+                           selectedSource === 'morphik_default' ?
+                            'Morphik' :
                             '일반 대화 (RAG 미사용)'
                           ) : 
                           '소스를 선택하세요'
@@ -360,6 +399,8 @@ const ChatPage = () => {
                             `${knowledgeBases.find(kb => kb.id === selectedSource.replace('kb_', ''))?.document_count || 0}개 문서` :
                            selectedSource.startsWith('agent_') ?
                             'AWS Bedrock Agent' :
+                           selectedSource === 'morphik_default' ?
+                            'Morphik 멀티모달 AI 플랫폼' :
                             'RAG 없는 AI 대화'
                           ) :
                           '원하는 소스를 선택하세요'
@@ -397,6 +438,9 @@ const ChatPage = () => {
                     ) : (
                       <option value="" disabled>사용 가능한 Agent가 없습니다</option>
                     )}
+                  </optgroup>
+                  <optgroup label="🖼️ 이미지 기반">
+                    <option value="morphik_default">🔬 Morphik</option>
                   </optgroup>
                 </select>
               </div>
@@ -460,6 +504,30 @@ const ChatPage = () => {
                       </>
                     ) : null;
                   })()}
+                </div>
+              )}
+
+              {/* Morphik Info Card */}
+              {selectedSource && selectedSource === 'morphik_default' && (
+                <div className="kb-info-card">
+                  <div className="kb-info-header">
+                    <FontAwesomeIcon icon={faMicroscope} />
+                    <span>활성 Morphik AI</span>
+                  </div>
+                  <div className="kb-details">
+                    <div className="kb-detail-item">
+                      <span className="label">모델:</span>
+                      <span className="value">Morphik AI</span>
+                    </div>
+                    <div className="kb-detail-item">
+                      <span className="label">특징:</span>
+                      <span className="value">멀티모달 문서 처리 및 분석</span>
+                    </div>
+                    <div className="kb-detail-item">
+                      <span className="label">상태:</span>
+                      <span className="value status active">연결됨</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
