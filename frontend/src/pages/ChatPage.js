@@ -464,9 +464,9 @@ const ChatPage = () => {
                       <option value="" disabled>사용 가능한 Agent가 없습니다</option>
                     )}
                   </optgroup>
-                  <optgroup label="🖼️ 이미지 기반">
+                  {/* <optgroup label="🖼️ 이미지 기반">
                     <option value="morphik_default">🔬 Morphik</option>
-                  </optgroup>
+                  </optgroup> */}
                 </select>
               </div>
               

@@ -157,7 +157,10 @@ body {
 
 /* Sidebar - Enhanced with Glass Morphism */
 .sidebar {
-  width: 320px;
+  /* 반응형 너비 설정 - 약간 더 작게 조정 */
+  width: clamp(260px, 20vw, 300px);
+  min-width: 260px;
+  max-width: 300px;
   background: linear-gradient(180deg, 
     rgba(30, 41, 59, 0.95) 0%, 
     rgba(15, 23, 42, 0.98) 50%,
@@ -168,7 +171,8 @@ body {
   padding: 24px 20px;
   overflow-y: auto;
   height: 100%;
-  flex-shrink: 0;
+  flex-shrink: 1; /* 화면이 작아질 때 축소 허용 */
+  flex-grow: 0; /* 필요 이상으로 확장 방지 */
   scroll-behavior: smooth;
   position: relative;
   box-shadow: 
@@ -1284,29 +1288,45 @@ body {
 }
 
 /* Enhanced Mobile Responsiveness */
+@media (max-width: 1440px) {
+  .sidebar {
+    width: clamp(240px, 18vw, 280px);
+    min-width: 240px;
+    max-width: 280px;
+  }
+}
+
 @media (max-width: 1024px) {
   .sidebar {
-    width: 300px;
+    width: clamp(220px, 16vw, 260px);
+    min-width: 220px;
+    max-width: 260px;
+    padding: 20px 16px;
   }
 }
 
 @media (max-width: 768px) {
   .main-container {
     position: relative;
+    flex-direction: column; /* 작은 화면에서는 세로 배치 */
   }
   
-  .sidebar:not(.mobile) {
-    width: 300px;
-  }
-  
-  .sidebar.mobile {
-    width: 320px;
-    height: calc(100vh - 60px);
+  .sidebar {
+    width: 100%;
+    height: auto;
+    min-height: 200px;
+    max-height: 40vh;
+    flex-shrink: 0;
+    order: 2; /* 사이드바를 아래로 이동 */
+    border-right: none;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.2);
+    overflow-y: auto;
   }
   
   .chat-area {
     flex: 1;
-    min-height: 0;
+    min-height: 60vh;
+    order: 1; /* 채팅 영역을 위로 이동 */
     margin-left: 0;
   }
   
@@ -1318,37 +1338,13 @@ body {
   .message-content {
     max-width: 90%;
   }
-  
-  /* Mobile overlay for sidebar */
-  .sidebar.mobile:not(.collapsed)::before {
-    content: '';
-    position: fixed;
-    top: 60px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    backdrop-filter: blur(4px);
-  }
 }
 
 @media (max-width: 480px) {
   .sidebar {
-    padding: 16px;
-  }
-  
-  .sidebar.mobile {
-    width: 100vw;
-    padding: 20px 16px;
-  }
-  
-  .sidebar-toggle-btn {
-    width: 44px;
-    height: 44px;
-    font-size: 18px;
-    top: 68px;
-    left: 12px;
+    padding: 12px;
+    min-height: 180px;
+    max-height: 35vh;
   }
   
   .chat-messages {
@@ -1385,6 +1381,60 @@ body {
   
   .source-description {
     font-size: 12px;
+  }
+}
+
+/* 추가 반응형 개선사항 */
+@media (min-width: 1600px) {
+  .sidebar {
+    width: clamp(280px, 22vw, 320px);
+    min-width: 280px;
+    max-width: 320px;
+  }
+}
+
+/* 화면 비율에 따른 조정 */
+@media (max-aspect-ratio: 1/1) {
+  .sidebar {
+    min-width: 240px;
+    max-width: 300px;
+  }
+}
+
+/* 부드러운 전환 효과 강화 */
+.sidebar,
+.chat-area,
+.main-container {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 사이드바 내부 요소들의 반응형 조정 */
+@media (max-width: 1024px) {
+  .sidebar-section {
+    margin-bottom: 24px;
+  }
+  
+  .sidebar-section h3 {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  
+  .category-item {
+    padding: 10px 14px;
+  }
+  
+  .category-name {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar-section {
+    margin-bottom: 16px;
+  }
+  
+  .category-item {
+    padding: 8px 12px;
   }
 }
 
