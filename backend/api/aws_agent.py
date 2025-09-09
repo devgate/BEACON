@@ -8,6 +8,7 @@ import uuid
 import logging
 from datetime import datetime
 from botocore.exceptions import ClientError
+import os
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -20,12 +21,61 @@ DEFAULT_AGENT_ID = 'QFZOZZY6LA'
 DEFAULT_AGENT_ALIAS_ID = 'HZSY9X6YYZ'
 DEFAULT_REGION = 'ap-northeast-2'
 
+# Global bedrock client instance
+bedrock_agent_runtime = None
+
+
+def create_bedrock_agent_client():
+    """Create Bedrock Agent Runtime client with proper AWS credential handling"""
+    region_name = DEFAULT_REGION
+    
+    # Check environment variables for AWS credentials
+    aws_key = os.getenv('AWS_ACCESS_KEY_ID')
+    aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')
+    aws_profile = os.getenv('AWS_PROFILE')
+    
+    logger.info(f"AWS_ACCESS_KEY_ID present: {bool(aws_key)}")
+    logger.info(f"AWS_SECRET_ACCESS_KEY present: {bool(aws_secret)}")
+    logger.info(f"AWS_PROFILE: {repr(aws_profile)}")
+    
+    session_kwargs = {'region_name': region_name}
+    
+    if aws_key and aws_secret:
+        # Use environment variables (highest priority)
+        # Remove AWS_PROFILE to avoid conflicts
+        if 'AWS_PROFILE' in os.environ:
+            del os.environ['AWS_PROFILE']
+        logger.info("✅ Using AWS credentials from environment variables")
+    elif aws_profile and aws_profile.strip():
+        # Use profile if no environment variables
+        session_kwargs['profile_name'] = aws_profile
+        logger.info(f"Using AWS profile: {aws_profile}")
+    else:
+        # Use default credential chain
+        logger.info("Using default AWS credentials (no profile)")
+    
+    session = boto3.Session(**session_kwargs)
+    
+    return session.client(
+        service_name='bedrock-agent-runtime',
+        region_name=region_name
+    )
+
 
 def init_aws_agent_module(context):
     """Initialize AWS Agent module with app context"""
+    global bedrock_agent_runtime
+    
     # Store context for later use if needed
     aws_agent_bp.context = context
-    logger.info("AWS Agent module initialized")
+    
+    # Initialize bedrock client with proper credential handling
+    try:
+        bedrock_agent_runtime = create_bedrock_agent_client()
+        logger.info("AWS Agent module initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize AWS Agent module: {e}")
+        bedrock_agent_runtime = None
 
 
 @aws_agent_bp.route('/chat', methods=['POST'])
@@ -70,11 +120,13 @@ def aws_agent_chat():
         # Record start time for response time calculation
         start_time = datetime.now()
         
-        # Create Bedrock Agent Runtime client
-        bedrock_agent_runtime = boto3.client(
-            'bedrock-agent-runtime',
-            region_name=DEFAULT_REGION
-        )
+        # Check if bedrock client is available
+        global bedrock_agent_runtime
+        if bedrock_agent_runtime is None:
+            logger.error("Bedrock Agent Runtime client not initialized")
+            return jsonify({
+                'error': 'AWS Bedrock Agent service not available'
+            }), 503
         
         # Invoke the agent
         response = bedrock_agent_runtime.invoke_agent(

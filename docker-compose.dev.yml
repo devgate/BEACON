@@ -15,10 +15,10 @@ services:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
       - PYTHONUNBUFFERED=1
-      - AWS_PROFILE=
       - BEDROCK_REGION=${BEDROCK_REGION:-ap-northeast-2}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_PROFILE=${AWS_PROFILE:-}
       - AWS_DEFAULT_REGION=${BEDROCK_REGION:-ap-northeast-2}
       - DYNAMODB_VECTORS_TABLE=${DYNAMODB_VECTORS_TABLE:-dev-beacon-vectors}
       - DYNAMODB_SESSIONS_TABLE=${DYNAMODB_SESSIONS_TABLE:-dev-beacon-sessions}
