@@ -37,7 +37,7 @@ const Header = ({ activeTab, setActiveTab }) => {
       <div className="header-right">
         <div className="user-info">
           <FontAwesomeIcon icon={faUserCircle} style={{ color: '#00d4ff' }} />
-          <span>안녕하세요, SK 쉴더스 admin님</span>
+          <span>안녕하세요, BEACON admin 님</span>
         </div>
   
       </div>
