@@ -60,7 +60,7 @@ def create_app():
     CORS(app, origins=['http://localhost:3000', 'http://localhost:8080'])
     
     # Configure app settings
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+    app.config['MAX_CONTENT_LENGTH'] = None  # No file size limit (handled by nginx)
     app.config['UPLOAD_FOLDER'] = 'uploads'
     
     # Add static file route for document images

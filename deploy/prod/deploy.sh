@@ -919,10 +919,69 @@ fi
 # 새 컨테이너 시작
 echo "새 컨테이너 시작 중..."
 if [[ "${SERVICE}" == "frontend" ]]; then
+    # ConfigMap 방식으로 nginx 설정 준비
+    echo "Setting up nginx configuration with ConfigMap..."
+    mkdir -p /tmp/nginx-config
+    
+    cat > /tmp/nginx-config/nginx.conf << 'NGINX_EOF'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log notice;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Logging
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+    access_log /var/log/nginx/access.log main;
+
+    # Basic Settings
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    client_max_body_size 0;
+
+    # Gzip Settings
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml;
+
+    # Include additional configurations
+    include /etc/nginx/conf.d/*.conf;
+}
+NGINX_EOF
+    
+    echo "Custom nginx configuration created with client_max_body_size 0 (unlimited)"
+    
+    # Frontend 컨테이너 시작 (ConfigMap nginx 설정 포함)
     docker run -d \
       --name beacon-frontend \
       --restart unless-stopped \
       -p 80:80 \
+      -v /tmp/nginx-config/nginx.conf:/etc/nginx/nginx.conf.mounted:ro \
       -e BACKEND_HOST=api.beacon.sk-shieldus.com \
       -e BACKEND_PORT=443 \
       -e BACKEND_PROTOCOL=https \
